@@ -1,4 +1,4 @@
-\documentclass[a4paper,twoside,draft]{report}
+\documentclass[a4paper,twoside,draft]{article}
 
 \begin{document}
 \title{Concurrent Memory Reclamation on ARM}
