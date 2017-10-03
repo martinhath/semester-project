@@ -11,8 +11,10 @@
   In languages that does not have a garbage collector, freeing used
   memory needs to be handeled by the programmer, or through other
   means by the language.
-  This report surveys different memory reclamation schemes, used
-  in common concurrent data structures, such as Queues, Lists, and Skip-Lists,
+  This report compares 3 different memory reclamation schemes:
+  epoch based reclamation, hazard pointers, and reference counting.
+  We look at how they perform when used in different common concurrent
+  data structures, such as Queues, Lists, and Skip-Lists,
   on the ARM platform.
 \end{abstract}
 
