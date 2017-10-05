@@ -1,10 +1,6 @@
 # Project Plan, Fall '17
 
 This is my project plan of the semester project in the fall of '17.
-The plan consists of three lists:
-one list of memory reclamation schemes,
-one list of data structures using these schemes, and
-one list of misc. stuff.
 
 The checkboxes are checked off when they are considered done.
 Eg, `No memory reclamation` will be checked off when there
