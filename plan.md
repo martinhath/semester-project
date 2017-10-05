@@ -14,6 +14,13 @@ Due to time restrictions there is no way we will implement all.
 Note that we can use eg. `crossbeam-epoch` "for free", for the data structures
 that is implemented when comparing approaches.
 
+We may want to limit ourselves to Rust implementations, in order to make the 
+comparison more fair. We could then talk about abstracted memory safety, and
+how it might be better for systems programming if such things are limited
+to small `unsafe` blocks, etc. However, this will limit the 3rd party
+implementations we can use. This may be a less interesting comparison,
+simply because we are excluding the state of the art.
+
  - [ ] No memory reclamation
  - [ ] EBR
  - [ ] Hazard Pointers
