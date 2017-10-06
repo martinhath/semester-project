@@ -40,6 +40,13 @@ This is primarily
  - [ ] HashMap (?)
  - [ ] Some set structure (?)
 
+We also need to decide what operations to support on the different structures,
+since it greatly affects the properties of the structures (eg. wether lock-freedom
+is possible, or how easy it is to obtain).
+While this may not directly affect the performance comparison of the memory
+reclamation schemes, it will probably be a significant factor in the performance
+of the implementations overall.
+
 ## Testing and profiling
 
 We need to build some testing suite, to ensure the correctness of the implementations.
