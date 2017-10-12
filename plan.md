@@ -1,6 +1,8 @@
 # Project Plan, Fall '17
 
 This is my project plan of the semester project in the fall of '17.
+The code for this project is located in
+[the comere repo](https://www.github.com/martinhath/comere)
 
 The checkboxes are checked off when they are considered done.
 Eg, `No memory reclamation` will be checked off when there
