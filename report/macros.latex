@@ -1,0 +1,2 @@
+\newcommand{\note}[1]{{\color{olive}\sffamily #1}}
+\newcommand{\todo}[1]{{\color{purple}\sffamily #1}}

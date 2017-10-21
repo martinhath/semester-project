@@ -1,10 +1,15 @@
 \documentclass[a4paper,twoside,draft]{article}
 
+\usepackage{color}
+\usepackage{xcolor}
+
 \begin{document}
 \title{Concurrent Memory Reclamation on ARM}
 \author{Martin Hafskjold Thoresen}
 \date{\today}
 \maketitle
+
+\input{macros.latex}
 
 \begin{abstract}
   Concurrent programs, like any other program, produces garbage.
@@ -14,7 +19,7 @@
   This report compares 3 different memory reclamation schemes:
   epoch based reclamation, hazard pointers, and reference counting.
   We look at how they perform when used in different common concurrent
-  data structures, such as Queues, Lists, and Skip-Lists,
+  data structures, such as Queues, Lists, and (probably not) Skip-Lists,
   on the ARM platform.
 \end{abstract}
 
@@ -29,10 +34,91 @@ Moores law, parallel applications, multi core, blabla
 Something about ARM.
 
 \subsection{Rust}
-New programming language, memory safety without GC, etc.
+% New programming language, memory safety without GC, etc.
+\todo{This doesn't read very well. Fix.}
+Rust is a programming language which focus is safety, speed, and concurrency.
+It originally emerged from Mozilla Labs in \todo{20??} but is now freely developed
+by over \todo{12345} contributors.
+Version 1.0 was released in May 2015, and the current stable version is 1.20
+The language is compiled, and features virtually no runtime.
+
+The language differs from most other languages in that it features linear types
+by its \emph{ownership} semantics.
+Values are either \emph{owned} or \emph{borrowed} by its scope.
+When an owned value goes out of scope Rust's ownership rules guarantees that
+there are no other references to the object and it can be safely \emph{dropped}
+by running its destructor when applicable.
+
+While Rust features rather strict rules for ownership and lifetimes of all values,
+the programmer may bend these rules as they wish.
+\todo{raw pointers, safe abstractions, some other things.}
+
 
 \section{Memory Reclamation}
 What is memory reclamation? Why is it hard? What approaches are there?
+
+When programming we lend memory from the operating system. This memory must be returned, or else
+we will sooner or later run out of it.
+In most modern programming languages, this is a feature provided by the runtime of the language.
+We call such languages \emph{managed languages}.
+However, in languages such as Rust, there is virtually no runtime, so this becomes a concern
+of the programmer.
+Garbage colleciton is typically the name used for memory reclamation;
+if we want to pedantic we would say a garbage collector performs memory reclamation.
+
+In a concurrent setting, we are concerned about the properties of our data structures,
+% TODO: define this
+such as wait-freedom, or lock-freedom.
+% TODO: rewrite this sentence.
+One can make the claim that data structures implemented in managed languages can never
+obtain some of these properties, since they depend on the runtime to get execution time
+in order for the program to be able to allocate memory.
+Hence, the runtime thread has to get CPU time in order for the program to make progress.
+\note{Could say this better; the point is to motivate the usage of Rust.}
+
+The field of concurrent memory reclamation is an active one, and a lot of different schemes
+have emerged the recent years. We will look at
+\emph{Epoch Based Reclamation} (EBR),
+\emph{Hazard Pointers},
+\note{and maybe a few others?}
+
+
+\subsection{Epoch Based Reclamation}
+
+EBR is a reclamation scheme based on the observation that most programs have no
+references to data structure nodes in between of operations on said structure,
+such that a given thread has no references to memory managed by the data strcutre
+in between operations on it.
+
+We use a global counter to store an \emph{epoch}, and each thread has a local
+version of the epoch they last saw.
+Before an operation the thread reads the global epoch, and stores it in its local
+memory, as well as registering that we are performing an operation. 
+When the thread wants to free memory it markes it with the current epoch
+and puts it in a \emph{limbo list}.
+
+We may increment the epoch by looking at all threads; if all threads that are currently
+performing an operation have seen the current global epoch, we may increment it.
+Upon epoch incrementation to epoch $e$, memory put in the limbo list at epoch $e-2$ is
+safe to free \note{why?}.
+
+\todo{Limits/challenges of EBR}
+
+
+\subsection{Other Schemes}
+\note{We don't have time to implement all interesting schemes,
+but it would be nice to have them in the report}
+
+
+\subsection{Hazard Pointers}
+
+In most operations on data structure, we only need a small constant number of
+references to shared memory. Hazard pointers exploits this by allowing each
+thread to reigster $n$ \emph{hazard pointers} which it needs to perform its operation. 
+For instance, if we traverse a linked list, the thread would register the pointers
+to the nodes it visites and the next node \note{what?}.
+$n$ is typically a low number, such as $3$ or $5$.
+
 
 \section{Results}
 What did we run? Plot some graphs. What did we find out?
