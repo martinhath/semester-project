@@ -1,7 +1,9 @@
-\documentclass[a4paper,twoside,draft]{article}
+\documentclass[a4paper,twoside]{article}
 
+\usepackage{listings}
 \usepackage{color}
 \usepackage{xcolor}
+
 
 \begin{document}
 \title{Concurrent Memory Reclamation on ARM}
@@ -39,8 +41,9 @@ Something about ARM.
 Rust is a programming language which focus is safety, speed, and concurrency.
 It originally emerged from Mozilla Labs in \todo{20??} but is now freely developed
 by over \todo{12345} contributors.
-Version 1.0 was released in May 2015, and the current stable version is 1.20
-The language is compiled, and features virtually no runtime.
+Version 1.0 was released in May 2015, and the current stable version is 1.21.
+The language is compiled and typed, and features
+type inference and virtually no runtime.
 
 The language differs from most other languages in that it features linear types
 by its \emph{ownership} semantics.
@@ -48,14 +51,82 @@ Values are either \emph{owned} or \emph{borrowed} by its scope.
 When an owned value goes out of scope Rust's ownership rules guarantees that
 there are no other references to the object and it can be safely \emph{dropped}
 by running its destructor when applicable.
+This way the programmer does not have to manually manage memory.
 
+\subsubsection{A Crash Course in Rust}
+
+Rust's syntax is based on that of C and OCaml.
+Variable bindings are created with the \code{let} construct,
+and they are immutable by default, unless marked with \code{mut}.
+Functions are declared with \code{fn}, and blocks are surrounded by curly brackets.
+The scope operator is \code{::}.
+
+Almost all syntactic constructs in Rust are expressions, including blocks and
+\code{if} statements.
+Expressions terminated by a semicolon have the value of \emph{unit} (\code{()}).
+The return value of a function is the value of its block, which again is the final
+expression in the block. Alternatively we can use \code{return}, as in C.
+Similiar to C++, Rust programmers prefers \emph{references} over raw pointers.
+We use \code{\&} and \code{*} as in C and C++.
+As with variables references are immutable by default; ie. the value they point
+to cannot be mutated.
+
+\begin{lstlisting}
+// ERROR:
+fn add_five(arg: &u32) { *arg += 5; }
+// OK:
+fn add_five(arg: &mut u32) { *arg += 5; }
+\end{lstlisting}
+
+Mutable references cannot alias; that is, it is not allowed to have multiple \code{\&mut}
+to the same data, and it is not allowed to have one \code{\&mut} in addition to other
+references.
+
+References are guaranteed to be valid, through Rusts usage of \emph{lifetimes}.
+A reference is only allowed to live for as long as the data it points to.
+This makes it impossible to return a reference to local stack variable in a function:
+\begin{lstlisting}
+fn add_five() -> &u32 { let n: u32 = 1; &n } // ERROR
+\end{lstlisting}
+
+A central point of Rusts philosophy is to build safe abtractions for programmers to use.
+For instance, \code{std::box::Box<T>} is a type that heap allocates a value of type \code{T}.
+The constructor will allocate the memory, and the destructor will free the memory.
+Since references can never outlive the value it references, any other pointer to the value
+is guaranteed by the compiler to be valid.
+This way we get a safe abtraction over heap allocation.
+
+Through lifetime tracking and the ownership model, Rust avoids the need for a
+garbage collector, while still allowing the programmer to not handle memory
+management directly. It does however add to the programmers mental overhead,
+since lifetime constraints and ownerships of the data must be tracked by their
+the mental model.
+
+\note{Add links to The Book ++}
+
+\todo{A longer code example, comparing Rust to C++17?}
+
+
+\subsubsection{}
+\note{Show of why Rust is interesting, eg. how the abstractions can be used,
+and why it makes sense to look at Rust.}
+\todo{Title of the subchapter}
+\todo{Ordering of this stuff}
 While Rust features rather strict rules for ownership and lifetimes of all values,
 the programmer may bend these rules as they wish.
+For instance it is possible to leak a value by not running its destructor,
+by using the \code{std::mem::forget} function, or to explicitly run the destrutor of
+a value, by calling \code{std::mem::drop}.
+
+Rust also have \emph{raw pointers}, which behaves like regular pointers in C and C++.
+Copying and creating raw pointers are safe operations, but reading a raw pointer is
+\code{unsafe}, as there are no guarantee on the memory we are reading.
+
 \todo{raw pointers, safe abstractions, some other things.}
 
 
 \section{Memory Reclamation}
-What is memory reclamation? Why is it hard? What approaches are there?
+\note{What is memory reclamation? Why is it hard? What approaches are there?}
 
 When programming we lend memory from the operating system. This memory must be returned, or else
 we will sooner or later run out of it.
@@ -67,9 +138,9 @@ Garbage colleciton is typically the name used for memory reclamation;
 if we want to pedantic we would say a garbage collector performs memory reclamation.
 
 In a concurrent setting, we are concerned about the properties of our data structures,
-% TODO: define this
+\todo{define this}
 such as wait-freedom, or lock-freedom.
-% TODO: rewrite this sentence.
+\todo{rewrite this sentence}
 One can make the claim that data structures implemented in managed languages can never
 obtain some of these properties, since they depend on the runtime to get execution time
 in order for the program to be able to allocate memory.
@@ -78,12 +149,21 @@ Hence, the runtime thread has to get CPU time in order for the program to make p
 
 The field of concurrent memory reclamation is an active one, and a lot of different schemes
 have emerged the recent years. We will look at
+\emph{Reference Counting} (RC),
 \emph{Epoch Based Reclamation} (EBR),
-\emph{Hazard Pointers},
+\emph{Hazard Pointers} (HP),
 \note{and maybe a few others?}
 
 
+
+
+\subsection{Reference Counting}
+\todo{this}
+Simple, "obvious" solution. But does it work?
+
 \subsection{Epoch Based Reclamation}
+
+\todo{history of EBR}
 
 EBR is a reclamation scheme based on the observation that most programs have no
 references to data structure nodes in between of operations on said structure,
@@ -93,7 +173,7 @@ in between operations on it.
 We use a global counter to store an \emph{epoch}, and each thread has a local
 version of the epoch they last saw.
 Before an operation the thread reads the global epoch, and stores it in its local
-memory, as well as registering that we are performing an operation. 
+memory, as well as registering that we are performing an operation.
 When the thread wants to free memory it markes it with the current epoch
 and puts it in a \emph{limbo list}.
 
@@ -104,20 +184,21 @@ safe to free \note{why?}.
 
 \todo{Limits/challenges of EBR}
 
+\subsection{Hazard Pointers}
+\todo{history of HP}
+
+In most operations on data structure, we only need a small constant number of
+references to shared memory. Hazard pointers exploits this by allowing each
+thread to reigster $n$ \emph{hazard pointers} which it needs to perform its operation.
+For instance, if we traverse a linked list, the thread would register the pointers
+to the nodes it visites and the next node \note{what?}.
+$n$ is typically a low number, such as $3$ or $5$.
+
 
 \subsection{Other Schemes}
 \note{We don't have time to implement all interesting schemes,
 but it would be nice to have them in the report}
 
-
-\subsection{Hazard Pointers}
-
-In most operations on data structure, we only need a small constant number of
-references to shared memory. Hazard pointers exploits this by allowing each
-thread to reigster $n$ \emph{hazard pointers} which it needs to perform its operation. 
-For instance, if we traverse a linked list, the thread would register the pointers
-to the nodes it visites and the next node \note{what?}.
-$n$ is typically a low number, such as $3$ or $5$.
 
 
 \section{Results}
