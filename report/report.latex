@@ -33,10 +33,18 @@
 \tableofcontents
 
 \section{Background}
-What do we need to understand in order to appreciate this report?
-Moores law, parallel applications, multi core, blabla
 
-Something about ARM.
+\note{What do we need to understand in order to appreciate this report?
+Moores law, parallel applications, multi core, blabla\\
+Something about ARM.\\
+Should probably also add something about sequential consistency,
+hardware ordering, problems with locking, other definitions (lock-free etc.),
+atomic operations (CAS, FA, etc.),
+notes on other futuristic atomic operations,
+maybbe notes on state of the art concurrency stuff?
+\\
+Consider adding MS queue or something to show pitfalls in concurrent programming?
+}
 
 \subsection{Rust}
 % New programming language, memory safety without GC, etc.
