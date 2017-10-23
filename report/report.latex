@@ -3,8 +3,10 @@
 \usepackage{listings}
 \usepackage{color}
 \usepackage{xcolor}
+\usepackage{tikz}
 
-
+\usetikzlibrary{positioning}
+\usetikzlibrary{shapes,decorations,shadows}
 
 \begin{document}
 \title{Concurrent Memory Reclamation on ARM}
@@ -72,7 +74,7 @@ We use \code{\&} and \code{*} as in C and C++.
 As with variables references are immutable by default; ie. the value they point
 to cannot be mutated.
 
-\begin{lstlisting}
+\begin{lstlisting}[firstnumber=last]
 // ERROR:
 fn add_five(arg: &u32) { *arg += 5; }
 // OK:
@@ -86,7 +88,7 @@ references.
 References are guaranteed to be valid, through Rusts usage of \emph{lifetimes}.
 A reference is only allowed to live for as long as the data it points to.
 This makes it impossible to return a reference to local stack variable in a function:
-\begin{lstlisting}
+\begin{lstlisting}[firstnumber=last]
 fn add_five() -> &u32 { let n: u32 = 1; &n } // ERROR
 \end{lstlisting}
 
@@ -169,16 +171,68 @@ When we no longer need this reference, we know it is safe to reclaim the memory
 the reference points to, since no other reference to that memory exists.
 Reference counting first appeared in 1960 by G. E. Collins\cite{collins1960},
 where it was used for collecting nodes of a linked list.
-The primary downsides of RC is that it is rather expensive, and that a na\"ive 
+The primary downsides of RC is that it is rather expensive, and that a na\"ive
 implementation does not reclaim cycles.
 Today reference counting is still used, although not in the setting of general
 memory reclamation. \todo{source?}
 \note{Want to say that while RC isn't used in GC, it is used for other things, like
 \code{std::rc::Rc} stuff. Also \code{Arc}, even more expensive}.
 
+% TODO: Use this for node drawing, when needed.
+%
+% \begin{figure}[ht]
+% \begin{tikzpicture}
+% \tikzset{Node/.style={
+%   rectangle split,
+%   rectangle split horizontal,
+%   rectangle split parts=2,
+%   draw,
+%   rounded corners=0.1cm
+%   }}
+%       \node [Node] (A) at (0,0) {\code{Count=3} \nodepart{second} \code{DATA} };\\
+%       \node [Node] (B) at (4,0) {\code{Count} \nodepart{second} \code{DATA} };\\
+%       \draw[->]  (0.5,-1) -- (0.5,-0.3);
+%       \draw[->]  (0,-1) -- (0,-0.3);
+%       \draw[->]  (-0.5,-1) -- (-0.5,-0.3);
+% \end{tikzpicture}
+%   \caption{Data nodes using RC}
+% \end{figure}
+
+\todo{Consider adding a code listing instead of using words}
 Reference counting is a natural approach to the problem of concurrent memory reclamation.
+The first observation to make is that we need to use atomic reads and writes
+to correctly increment and decrement the reference count. However,
+the na\"ive implementation is not correct.
+Consider two threads operating on some \code{RC<T>}.
+When thread A want to create a new reference to the data, it increments the count in
+the \code{RC} object. Upon destruction, the count is decremented
+and the data is freed if the count is 0.
+However, it is possible that thread B has a reference to the RC object
+and that it got preempted right before incrementing the count.
+Then the whole object gets freed by thread A, since the count is 0,
+and when thread B gets execution time again, it has a pointer to freed memory
+which it indents to read.
+It is worth noting that we can free the \emph{data} using this scheme, but not
+the entire \code{RC} node.
+
+\note{Add note on differential RC:
+http://www.1024cores.net/home/lock-free-algorithms/object-life-time-management/differential-reference-counting}
 
 
+% TODO:  Code listing sample here, with custom lineno prefix
+%
+% \begin{lstlisting}[label=lst:rc-broken,
+%                    numberblanklines=false,
+%                    % TODO: would like to not copy this all over the place
+%                    numberstyle=\color{gray}\ttfamily{}RC]
+% node = load_node();
+% node.count += 1;
+% data = node.data;
+% // use the node
+% node.count -=1;
+% if node.count == 0
+%   free(node);
+% \end{lstlisting}
 
 \subsection{Epoch Based Reclamation}
 
