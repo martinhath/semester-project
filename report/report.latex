@@ -5,6 +5,7 @@
 \usepackage{xcolor}
 
 
+
 \begin{document}
 \title{Concurrent Memory Reclamation on ARM}
 \author{Martin Hafskjold Thoresen}
@@ -161,6 +162,24 @@ have emerged the recent years. We will look at
 \todo{this}
 Simple, "obvious" solution. But does it work?
 
+\todo{split into two paragraphs? Eventually move history part to bottom}
+The idea of reference counting is that we count the number of references to data,
+so that we can tell if we are holding the only reference to some data.
+When we no longer need this reference, we know it is safe to reclaim the memory
+the reference points to, since no other reference to that memory exists.
+Reference counting first appeared in 1960 by G. E. Collins\cite{collins1960},
+where it was used for collecting nodes of a linked list.
+The primary downsides of RC is that it is rather expensive, and that a na\"ive 
+implementation does not reclaim cycles.
+Today reference counting is still used, although not in the setting of general
+memory reclamation. \todo{source?}
+\note{Want to say that while RC isn't used in GC, it is used for other things, like
+\code{std::rc::Rc} stuff. Also \code{Arc}, even more expensive}.
+
+Reference counting is a natural approach to the problem of concurrent memory reclamation.
+
+
+
 \subsection{Epoch Based Reclamation}
 
 \todo{history of EBR}
@@ -208,5 +227,8 @@ Runtime, power usage, etc.
 
 \section{Discussion}
 Whys
+
+\bibliographystyle{acm}
+\bibliography{sources}
 
 \end{document}
