@@ -23,7 +23,7 @@ to small `unsafe` blocks, etc. However, this will limit the 3rd party
 implementations we can use. This may be a less interesting comparison,
 simply because we are excluding the state of the art.
 
- - [ ] No memory reclamation
+ - [x] No memory reclamation
  - [ ] EBR
  - [ ] Hazard Pointers
  - [ ] Some thing based on RC
@@ -36,9 +36,9 @@ simply because we are excluding the state of the art.
 We list all data strucutes we might want to test the reclamation schemes on.
 This is primarily
 
- - [ ] Queue
- - [ ] List
- - [ ] SkipList
+ - [x] Queue
+ - [x] List
+ - [ ] SkipList (?)
  - [ ] HashMap (?)
  - [ ] Some set structure (?)
 
@@ -76,7 +76,7 @@ Tasks which are in **bold** are required for the MVP.
 
 | Reclamation Scheme | Queue | List | SkipList | HashMap (?) |
 | --- | --- | --- | --- | --- |
-|No memory reclamation | **yes** | **no** | no | no |
+|No memory reclamation | **yes** | **yes** | no | no |
 |EBR |  **yes** | **no** | no | no |
 |Hazard Pointers |  **no** | **no** | no | no |
 | `crossbeam-epoch` | **yes** | **yes** | no | no |
