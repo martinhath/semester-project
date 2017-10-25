@@ -1,2 +1,2 @@
-report.pdf: report.latex macros.latex
-	latex-mk --pdflatex report.latex
+report.pdf: report.tex macros.tex sources.bib
+	latex-mk --pdflatex report.latex report

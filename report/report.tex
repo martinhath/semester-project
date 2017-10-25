@@ -79,7 +79,7 @@ The return value of a function is the value of its block, which again is the fin
 expression in the block. Alternatively we can use \code{return}, as in C.
 Similiar to C++, Rust programmers prefers \emph{references} over raw pointers.
 We use \code{\&} and \code{*} as in C and C++.
-As with variables references are immutable by default; ie. the value they point
+As with variables, references are immutable by default; the value they point
 to cannot be mutated.
 
 \begin{lstlisting}[firstnumber=last]
@@ -267,6 +267,7 @@ safe to free \note{why?}.
 
 \subsection{Hazard Pointers}
 \todo{history of HP}
+Hazard pointers was introduced by Michael in~\cite{michael2004hazard}.
 
 In most operations on data structure, we only need a small constant number of
 references to shared memory. Hazard pointers exploits this by allowing each
