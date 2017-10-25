@@ -14,7 +14,7 @@
 \date{\today}
 \maketitle
 
-\input{macros.latex}
+\input{macros.tex}
 
 \begin{abstract}
   Concurrent programs, like any other program, produces garbage.
@@ -34,17 +34,51 @@
 
 \section{Background}
 
+\note{I ment to write a quick intro on parallelism, and why we care.
+Maybe this is out of scope?}
+In 1965 Gordon Moore stated what is now knows as \emph{Moore's Law},
+which roughly states that the number of transistors on integrated circuits
+will double every 18 months.
+The law has also been used to describe the clock speed of central processing
+units (CPUs).
+However, this exponential growth came to a halt during the 2000s, where
+the clock speed of CPUs stopped between 3 GHz and 4 GHz.
+Over 10 years later high end consumer CPUs still have a clock
+speed in that same range --- performance increase has mainly been
+due to increase in parallelism.
+\note{Parallelism isn't a success story for programmers.
+Hard, error-prone, even simple things goes wrong.
+Need effective abstractions to improve this. ??}
+
+
+\subsubsection*{\note{TODO LIST}}
 \note{What do we need to understand in order to appreciate this report?
 Moores law, parallel applications, multi core, blabla\\
 Something about ARM.\\
-Should probably also add something about sequential consistency,
-hardware ordering, problems with locking, other definitions (lock-free etc.),
-atomic operations (CAS, FA, etc.),
-notes on other futuristic atomic operations,
 maybbe notes on state of the art concurrency stuff?
+\\
+Notes on memory terminology (retire, reclaim, etc.)
 \\
 Consider adding MS queue or something to show pitfalls in concurrent programming?
 }
+
+\subsection{Terminology}
+We start with basic terminology of memory management.
+Most of the programs we write \emph{allocate} memory.
+This memory is then \emph{deallocated}, or \emph{freed}, when we are done with it,
+so that the memory may be used at a later time;
+the memory is thus \emph{reclaimed}.
+If we want to mark memory as freed without freeing it we say we \emph{retire} the memory
+(reasons for doing so will become apparent).
+
+\todo{seqcst, lock-free etc.}
+
+\subsection{Parallelism in Hardware}
+\note{hardware ordering.  atomic operations (CAS, FA, etc.),
+notes on other futuristic atomic operations}
+\note{We should focus on the things that are currently supported in hardware,
+since this is more of a practical thing.}
+
 
 \subsection{Rust}
 % New programming language, memory safety without GC, etc.
@@ -117,8 +151,24 @@ the mental model.
 
 \todo{A longer code example, comparing Rust to C++17?}
 
+\subsubsection{Examples}
+\note{Do we want this?}
+\note{look at examples for why the rules in Rust are useful to have enforced by the compiler}
 
-\subsubsection{}
+\todo{borrowing}
+
+Assume we have a dynamically sized array (\code{Vec}), and that the exclusive
+mutable reference does not exist. Now we may have a reference to a value
+in the \code{Vec}, as well as a mutable reference to the \code{Vec} itself.
+Consider what happens when we push a new element into the \code{Vec};
+the internal buffer may be full, so new memory must be allocated,
+the elements moved over, and the old buffer is \code{free}d.
+However, this makes the reference to the element invalid, since the memory
+it points to is now \code{free}d.
+
+\todo{lifetime}
+
+\subsubsection{Advanced Rust}
 \note{Show of why Rust is interesting, eg. how the abstractions can be used,
 and why it makes sense to look at Rust.}
 \todo{Title of the subchapter}
@@ -172,12 +222,12 @@ have emerged the recent years. We will look at
 \todo{this}
 Simple, "obvious" solution. But does it work?
 
-\todo{split into two paragraphs? Eventually move history part to bottom}
+\todo{split into two paragraphs? Eventually move history part to bottom, Knuth style}
 The idea of reference counting is that we count the number of references to data,
 so that we can tell if we are holding the only reference to some data.
 When we no longer need this reference, we know it is safe to reclaim the memory
 the reference points to, since no other reference to that memory exists.
-Reference counting first appeared in 1960 by G. E. Collins\cite{collins1960},
+Reference counting first appeared in 1960 by G. E. Collins\cite{collins1960method},
 where it was used for collecting nodes of a linked list.
 The primary downsides of RC is that it is rather expensive, and that a na\"ive
 implementation does not reclaim cycles.
@@ -221,7 +271,8 @@ Then the whole object gets freed by thread A, since the count is 0,
 and when thread B gets execution time again, it has a pointer to freed memory
 which it indents to read.
 It is worth noting that we can free the \emph{data} using this scheme, but not
-the entire \code{RC} node.
+the entire \code{RC} node, since the \code{count} field may be set to a special
+value indicating that its data is freed.
 
 \note{Add note on differential RC:
 http://www.1024cores.net/home/lock-free-algorithms/object-life-time-management/differential-reference-counting}
@@ -243,38 +294,66 @@ http://www.1024cores.net/home/lock-free-algorithms/object-life-time-management/d
 % \end{lstlisting}
 
 \subsection{Epoch Based Reclamation}
+Epoch Based Reclamation (EBR) was introduced by Fraser in~\cite{fraser2004practical}.
+It is a reclamation scheme based on the observation that most programs have no
+references to data structure memory in between of operations on the structure.
+The time interval in between operations on the data structure are therefore
+safepoints (also called grace periods) for memory reclamation to occur.
+\todo{add something more here}
 
-\todo{history of EBR}
+EBR uses the concept of an \emph{epoch}, a global timestamp which we
+use to find out when it is safe to reclaim retired memory.
+The epoch is a global counter.
+In addition we have a global list with one entry for each running thread,
+which the thread uses for registering the last epoch they read, as well as
+whether they are currently performing an operation.
+We call a thread performing an operation \emph{pinned}, and the action of
+marking and unmarking \emph{pinning} and \emph{unpinning} the thread.
 
-EBR is a reclamation scheme based on the observation that most programs have no
-references to data structure nodes in between of operations on said structure,
-such that a given thread has no references to memory managed by the data strcutre
-in between operations on it.
+When starting an operation a thread reads the global epoch and saves it
+in its entry, and pins the thread.
+Upon retiering memory the thread marks the memory with the global epoch
+and puts it in a \emph{limbo list} \note{replace with the
+three lists instead of marking?}.
+Every once in a while, the threads try to increment the epoch.
+The epoch can only be incremented if all pinned threads
+have seen the current epoch. This way we know that all threads
+with references to memory which may be freed by the data structure
+is either in the current epoch, or in the previous epoch.
+Lastly, after incrementing an epoch to $e$ we know that garbage that
+was added in epoch $e-2$ is safe to be freed.
+\note{Should clairfy here. Note that the potential counter example
+is A a wants to delete X, B incs epoch and reads X,
+A deletes X, and incs epoch. But, now X is marked with e+1,
+even though A was in e, since we're reading the global epoch on delete.}
 
-We use a global counter to store an \emph{epoch}, and each thread has a local
-version of the epoch they last saw.
-Before an operation the thread reads the global epoch, and stores it in its local
-memory, as well as registering that we are performing an operation.
-When the thread wants to free memory it markes it with the current epoch
-and puts it in a \emph{limbo list}.
+\note{Add example from comere?}
 
-We may increment the epoch by looking at all threads; if all threads that are currently
-performing an operation have seen the current global epoch, we may increment it.
-Upon epoch incrementation to epoch $e$, memory put in the limbo list at epoch $e-2$ is
-safe to free \note{why?}.
+There are still a few challenges with EBR.
+A problem is that we are not allowed to keep references to data across operations,
+since the thread must be pinned while we are using the references.
+A natural way to mitigate this constraint is to leave the thread pinned.
+However, this will stop the advancement of the global epoch, and thus effectively
+halting the memory reclamation.
+An immediate consequence of this is that EBR is not lock-free.
+\note{Limits/challenges of EBR. Add more.}
 
-\todo{Limits/challenges of EBR}
+\todo{Add proof? Pseudocode of stuff?}
+
 
 \subsection{Hazard Pointers}
-\todo{history of HP}
-Hazard pointers was introduced by Michael in~\cite{michael2004hazard}.
 
-In most operations on data structure, we only need a small constant number of
-references to shared memory. Hazard pointers exploits this by allowing each
-thread to reigster $n$ \emph{hazard pointers} which it needs to perform its operation.
-For instance, if we traverse a linked list, the thread would register the pointers
-to the nodes it visites and the next node \note{what?}.
-$n$ is typically a low number, such as $3$ or $5$.
+Hazard pointers was introduced by Michael in~\cite{michael2004hazard}.
+It is based on the observation that in most operations on data structure
+we only need a small constant number of references to memory that is shared
+between running threads. The technique exploits this by allowing each
+thread to reigster the pointers, called \emph{hazard pointers},
+the thread is using at a given instant. This way other threads can tell
+if memory they are operating on is used by other threads.
+The number of poiters we need varies with the algorithms performed,
+but a typical value is one or two.
+
+
 
 
 \subsection{Other Schemes}
@@ -282,14 +361,18 @@ $n$ is typically a low number, such as $3$ or $5$.
 but it would be nice to have them in the report}
 
 
+\section{Implementation}
+\note{Have this as a section, or appendix?}
+
 
 \section{Results}
-What did we run? Plot some graphs. What did we find out?
+\note{What did we run? Plot some graphs. What did we find out?
 Which scheme is better for which application?
-Runtime, power usage, etc.
+Runtime, power usage, etc.}
+
 
 \section{Discussion}
-Whys
+\note{Whys}
 
 \bibliographystyle{acm}
 \bibliography{sources}
