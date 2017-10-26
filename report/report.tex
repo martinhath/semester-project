@@ -353,6 +353,16 @@ if memory they are operating on is used by other threads.
 The number of poiters we need varies with the algorithms performed,
 but a typical value is one or two.
 
+\note{This doesn't really make sense - both techniques requires
+some manual work, be it pointer registration or pinning stuff.
+Also, while this might be a difference in the two schemes as a whole,
+it is probably more interesting to take the comparison in the implementation part.}
+A big difference in usage of HP from EBR is that identifying which
+pointers we need to register is a task which cannot be automated.
+We need to manually go though our algorithms and look for pointer
+usage which may fail, and add registration code inline.
+This is of great contrast to EBR, in which it was possible to
+just pin and unpin the thread before and after operations.
 
 
 
@@ -362,7 +372,8 @@ but it would be nice to have them in the report}
 
 
 \section{Implementation}
-\note{Have this as a section, or appendix?}
+\note{How did we implement the schemes? What choices did we have to take?
+Whys. Also implementation problems, testing techniques, profiling setup etc.}
 
 
 \section{Results}
