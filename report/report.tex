@@ -17,6 +17,7 @@
 \input{macros.tex}
 
 \begin{abstract}
+  \todo{update this!}
   Concurrent programs, like any other program, produces garbage.
   In languages that do not have a garbage collector, freeing used
   memory needs to be handeled by the programmer, or through other
@@ -79,10 +80,18 @@ notes on other futuristic atomic operations}
 \note{We should focus on the things that are currently supported in hardware,
 since this is more of a practical thing.}
 
+\subsection{Parallelism in Software}
+\note{Hardware works such and such, but how does programmers handle these things?
+Mention \code{volatile}? Look at instructions?
+Many programmers does not think about cache problems. What about
+concurrency problems? May they also be ignored? (no)}
 
 \subsection{Rust}
 % New programming language, memory safety without GC, etc.
-\todo{This doesn't read very well. Fix.}
+\todo{This doesn't read very well. Fix.
+This should be written as if you have never heard of Rust,
+but if youre fairly familiar with PL terms.
+Worst case, we can refer to the PL book if it goes out of hand.}
 Rust is a programming language which focus is safety, speed, and concurrency.
 It originally emerged from Mozilla Labs in \todo{20??} but is now freely developed
 by over \todo{12345} contributors.
@@ -147,7 +156,7 @@ management directly. It does however add to the programmers mental overhead,
 since lifetime constraints and ownerships of the data must be tracked by their
 the mental model.
 
-\note{Add links to The Book ++}
+\todo{Add links to The Book ++}
 
 \todo{A longer code example, comparing Rust to C++17?}
 
@@ -185,9 +194,15 @@ Copying and creating raw pointers are safe operations, but reading a raw pointer
 
 \todo{raw pointers, safe abstractions, some other things.}
 
+\note{Finally we should have some examples of all Rust stuff comming together,
+so the reader can see why the language as a whole is interesting.
+We could also add some stuff about the asm \code{rustc} generates,
+demonstrating ``zero-cost abstractions''.}
+
 
 \section{Memory Reclamation}
 \note{What is memory reclamation? Why is it hard? What approaches are there?}
+\note{Assumed background: had OS, have programmed in C or C++.}
 
 When programming we lend memory from the operating system. This memory must be returned, or else
 we will sooner or later run out of it.
@@ -365,6 +380,8 @@ This is of great contrast to EBR, in which it was possible to
 just pin and unpin the thread before and after operations.
 
 
+\todo{Revisit RC here, with the stuff from the blog?
+Or mabye its better to just put it at the end of the subsection.}
 
 \subsection{Other Schemes}
 \note{We don't have time to implement all interesting schemes,
@@ -375,6 +392,8 @@ but it would be nice to have them in the report}
 \note{How did we implement the schemes? What choices did we have to take?
 Whys. Also implementation problems, testing techniques, profiling setup etc.}
 
+\todo{Rename to methology?}
+
 
 \section{Results}
 \note{What did we run? Plot some graphs. What did we find out?
@@ -383,7 +402,8 @@ Runtime, power usage, etc.}
 
 
 \section{Discussion}
-\note{Whys}
+\note{Whys. How was Rust? Why are the graphs as they are?
+What alternatives exists?}
 
 \bibliographystyle{acm}
 \bibliography{sources}
