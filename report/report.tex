@@ -4,7 +4,6 @@
 \usepackage{color}
 \usepackage{xcolor}
 \usepackage{tikz}
-
 \usetikzlibrary{positioning}
 \usetikzlibrary{shapes,decorations,shadows}
 
@@ -30,6 +29,8 @@
 \end{abstract}
 
 \section{Introduction}
+\note{Outline: parallelism, garbage collection, what we are about to do,
+rust, performance, usability}
 
 \tableofcontents
 
@@ -45,24 +46,28 @@ units (CPUs).
 However, this exponential growth came to a halt during the 2000s, where
 the clock speed of CPUs stopped between 3 GHz and 4 GHz.
 Over 10 years later high end consumer CPUs still have a clock
-speed in that same range --- performance increase has mainly been
-due to increase in parallelism.
+speed in that same range, and the performance increase of modern CPUs
+has mainly been due to increase in parallelism\note{has it, though?
+Or is it more that CPUs hasn't really improved that much?}.
 This improvement however, has not been as noticable as the former improvements in
 clock speed. This is because programs already written cannot automatically
 use the extra parallelism that newer architectures give us;
-Parallelism needs to be accounted for by the programmers.
+Parallelism needs to be accounted for by programmers.
 
-\note{fix this..}
+\note{fix this. It reads alright on its own, but the previous paragraph ends
+with the same thing, making it very weird to read.}
 Despite having multi-core architectures as the most central performance
 improvement in CPUs, parallelism is not a success story for programmers.
 Most mainstream programming languages does not have first class support
-for parallel constructs, and synchronization and work management must
+for parallel constructs, and synchronization and work management\note{?} must
 still be handeled explicitly by the programmer, using fairly low level
-constructs, such as mutexes and threads.
+constructs, such as mutexes and threads \note{what are alternatives?}.
 \note{what is the motivation behind this? Do we want to make the claim
 that Rust is making low level stuff more approachable, and that we can
 help improving the performace of programs written by having CMR in Rust?}
 In short, parallelism has yet to be approachable for a lot of programmers.
+\note{If we are going to complain on the state of parallel programming
+we should at least mention some alternatives.}
 \note{Parallelism isn't a success story for programmers.
 Hard, error-prone, even simple things goes wrong.
 Need effective abstractions to improve this. ??}
@@ -86,20 +91,24 @@ requesting a memory range from the OS for exlusive use by the program.
 This memory is then \emph{deallocated}, or \emph{freed}, when we are done with it,
 so that the memory may be used at a later time;
 the memory is thus \emph{reclaimed}.
-If we want to ``mark'' memory as freed without freeing it we say we \emph{retire} the memory
+If we want to ``mark'' memory as freed without freeing it (that is, the program
+still has exclusive use of it) we say we \emph{retire} the memory
 (reasons for doing so will become apparent).
 
 Both modern compilers and CPUs may reorder program instructions
-if they think it will improve performace, such as cache behaviour
-or pipeline stalling. This may or may not be acceptable by
+if they think it will improve performace, for instance by
+improving memory locality and thus improving cache behaviour,
+or reduce pipeline stalling. This may or may not be acceptable by
 the program. The guarantee that the instructions executed
 appear to take effect in program order is called
-\emph{sequential consistency}.
+\emph{sequential consistency}, and was defined by Leslie Lamport
+in 1979\todo{source here}.
 We call a system in which threads can be prevented from making
 progress \emph{blocking}. For instance, a system using mutexes
 is blocking, since a second thread may acquire the mutex,
 and be preempted. The oposite of blocking is \emph{non-blocking}.
-A method is \emph{lock-free} if \emph{some} thread will make progress.
+A method is \emph{lock-free} if we have a guarantee that
+\emph{some} thread will make progress.
 Note that any given thread may be blocked for an infinite amount of time.
 For a more thorough introduction see~\cite{herlihy2011art}.
 
@@ -111,7 +120,7 @@ For a more thorough introduction see~\cite{herlihy2011art}.
 \subsection{Parallelism in Hardware}
 \note{reconsider having hardware and software sections.
 Maybe it's better to just have one?}
-\note{hardware ordering.  atomic operations (CAS, FA, etc.),
+\note{hardware ordering. Atomic operations (CAS, FA, etc.),
 notes on other futuristic atomic operations}
 \note{We should focus on the things that are currently supported in hardware,
 since this is more of a practical thing.}
@@ -120,11 +129,60 @@ This includes most modern CPUs, both desktop computers and laptops,
 as well as mobile devices such as smartphones and tablets.
 The first cache level, L1, is usually only used by one core,
 while the remaining levels, L2 (and maybe L3), are shared.
-It is the job of the CPU to make sure that the caches are
-invisible to the programmer, \note{blabalba}
+This means that when a program is writing to memory,
+the same logical memory may be present in multiple
+physical locations on the CPU, which causes synchronization
+problems when this memory is written to. This is the
+problem of \emph{cache coherence}.
 
-\note{If we keep hardware and software sections, this should
-be moved to the latter.}
+\note{???}
+We would like our programs to be sequentially consistent.
+However, we also want our hardware to be performant, and it
+turns out that these two requirements are conflicting, and we have
+chosen the latter.
+
+Different CPU architectures have different memory models,
+which dicates how much the CPU is allowed to reorder reads and
+writes without brekaing the semantics of the program when ran
+sequentially.\
+x86 have a rahter strong memory model, meaning the CPU is very limited
+in its ability to reorder. ARM on the other hand, have a comparably weak
+meomry model.
+In both arcitechtures we have constructs for saying ``do not move
+memory operations across this line'', called \emph{memory fences} or
+\emph{barriers}. More details can be found in \todo{find source for this!}.
+
+\note{We should maybe move the Rust section to before this, so we can use
+\code{std::sync::atomic::Ordering}}.
+The C11 memory model (\note{from where is this actually?}) defined five memory orderings:
+Acquire, Release, Acquire+Release, Sequentially Consistent, Relaxed, and
+\note{some more? note about unused thing?},
+Relaxed is the weakest, with no ordering constraints,
+Acquire forbids subsequent operations to be moved before the operation,
+Release forbids previous operations to be moved after the operation,
+and Sequentially Consistent forbids both.
+Acquire+Release is Acquire if the operation is a load,
+and Release if it is a store.
+A way to remember the acquire and release orderings is that they
+hold the semantics of a lock, where we acquire and release the lock:
+memory operations inside the critical section is not allowed to be
+moved out on either side.
+
+
+
+
+\note{blabalba}
+
+
+
+
+
+\subsection{Parallelism in Software}
+\note{Hardware works such and such, but how does programmers handle these things?
+Mention \code{volatile}? Look at instructions?
+Many programmers does not think about cache problems. What about
+concurrency problems? May they also be ignored? (no)}
+
 Modern compilers \emph{and CPUs} reorder instructions when it improves
 performance if they can prove that the end result is the same.
 In sequential code there is no way to notice the difference.
@@ -142,22 +200,9 @@ concurrently thread B might decide to assign \code{f = 1} first,
 and thread A will risk printing \code{0} instead of \code{1},
 which was the only case in the sequential world.
 
-\todo{rewrite}
-In concurrent code however, one threads execution might depend
-on the exact ordering of the reads and writes of another thread.
-\note{there is fence instructions as well. Include.}
-For this reason compilers offers \emph{intrinsics},
-special instructions for the compiler, to specify which reoderings are allowed;
-This is called a \emph{memory barrier} or \emph{fence}.
+We can fix this problem by using a fence.
 
 
-
-
-\subsection{Parallelism in Software}
-\note{Hardware works such and such, but how does programmers handle these things?
-Mention \code{volatile}? Look at instructions?
-Many programmers does not think about cache problems. What about
-concurrency problems? May they also be ignored? (no)}
 
 \subsection{Rust}
 % New programming language, memory safety without GC, etc.
