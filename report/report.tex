@@ -1,9 +1,11 @@
-\documentclass[a4paper,twoside]{article}
+\documentclass[b5paper,twoside]{report}
 
+\usepackage[toc]{appendix}
 \usepackage{listings}
 \usepackage{color}
 \usepackage{xcolor}
 \usepackage{tikz}
+\usepackage{hyperref}
 \usetikzlibrary{positioning}
 \usetikzlibrary{shapes,decorations,shadows}
 
@@ -28,13 +30,15 @@
   on the ARM platform.
 \end{abstract}
 
-\section{Introduction}
+\chapter{Introduction}
 \note{Outline: parallelism, garbage collection, what we are about to do,
 rust, performance, usability}
 
+lkajsd
+
 \tableofcontents
 
-\section{Background}
+\chapter{Background}
 
 \note{I ment to write a quick intro on parallelism, and why we care.
 Maybe this is out of scope?}
@@ -73,7 +77,7 @@ Hard, error-prone, even simple things goes wrong.
 Need effective abstractions to improve this. ??}
 
 
-\subsubsection*{\note{TODO LIST}}
+\subsection*{\note{TODO LIST}}
 \note{What do we need to understand in order to appreciate this report?
 Moores law, parallel applications, multi core, blabla\\
 Something about ARM.\\
@@ -84,7 +88,7 @@ Notes on memory terminology (retire, reclaim, etc.)
 Consider adding MS queue or something to show pitfalls in concurrent programming?
 }
 
-\subsection{Terminology}
+\section{Terminology}
 We start with basic terminology of memory management.
 Most of the programs we write \emph{allocate} memory, meaning
 requesting a memory range from the OS for exlusive use by the program.
@@ -117,7 +121,7 @@ For a more thorough introduction see~\cite{herlihy2011art}.
 
 
 
-\subsection{Parallelism in Hardware}
+\section{Parallelism in Hardware}
 \note{reconsider having hardware and software sections.
 Maybe it's better to just have one?}
 \note{hardware ordering. Atomic operations (CAS, FA, etc.),
@@ -177,7 +181,7 @@ moved out on either side.
 
 
 
-\subsection{Parallelism in Software}
+\section{Parallelism in Software}
 \note{Hardware works such and such, but how does programmers handle these things?
 Mention \code{volatile}? Look at instructions?
 Many programmers does not think about cache problems. What about
@@ -204,7 +208,7 @@ We can fix this problem by using a fence.
 
 
 
-\subsection{Rust}
+\section{Rust}
 % New programming language, memory safety without GC, etc.
 \todo{This doesn't read very well. Fix.
 This should be written as if you have never heard of Rust,
@@ -225,7 +229,7 @@ there are no other references to the object and it can be safely \emph{dropped}
 by running its destructor when applicable.
 This way the programmer does not have to manually manage memory.
 
-\subsubsection{A Crash Course in Rust}
+\subsection{A Crash Course in Rust}
 
 Rust's syntax is based on that of C and OCaml.
 Variable bindings are created with the \code{let} construct,
@@ -278,7 +282,7 @@ the mental model.
 
 \todo{A longer code example, comparing Rust to C++17?}
 
-\subsubsection{Examples}
+\subsection{Examples}
 \note{Do we want this?}
 \note{look at examples for why the rules in Rust are useful to have enforced by the compiler}
 
@@ -295,8 +299,8 @@ it points to is now \code{free}d.
 
 \todo{lifetime}
 
-\subsubsection{Advanced Rust}
-\note{Show of why Rust is interesting, eg. how the abstractions can be used,
+\subsection{Advanced Rust}
+\note{Show of why Rust is interesting, eg.\ how the abstractions can be used,
 and why it makes sense to look at Rust.}
 \todo{Title of the subchapter}
 \todo{Ordering of this stuff}
@@ -318,7 +322,7 @@ We could also add some stuff about the asm \code{rustc} generates,
 demonstrating ``zero-cost abstractions''.}
 
 
-\section{Memory Reclamation}
+\chapter{Memory Reclamation}
 \note{What is memory reclamation? Why is it hard? What approaches are there?}
 \note{Assumed background: had OS, have programmed in C or C++.}
 
@@ -351,7 +355,7 @@ have emerged the recent years. We will look at
 
 
 
-\subsection{Reference Counting}
+\section{Reference Counting}
 \todo{this}
 Simple, "obvious" solution. But does it work?
 
@@ -362,7 +366,7 @@ When we no longer need this reference, we know it is safe to reclaim the memory
 the reference points to, since no other reference to that memory exists.
 Reference counting first appeared in 1960 by G. E. Collins\cite{collins1960method},
 where it was used for collecting nodes of a linked list.
-The primary downsides of RC is that it is rather expensive, and that a na\"ive
+The primary downsides of RC is that it is rather expensive, and that a na\"\i{}ve
 implementation does not reclaim cycles.
 Today reference counting is still used, although not in the setting of general
 memory reclamation. \todo{source?}
@@ -393,7 +397,7 @@ memory reclamation. \todo{source?}
 Reference counting is a natural approach to the problem of concurrent memory reclamation.
 The first observation to make is that we need to use atomic reads and writes
 to correctly increment and decrement the reference count. However,
-the na\"ive implementation is not correct.
+the na\"\i{}ve implementation is not correct.
 Consider two threads operating on some \code{RC<T>}.
 When thread A want to create a new reference to the data, it increments the count in
 the \code{RC} object. Upon destruction, the count is decremented
@@ -407,7 +411,7 @@ It is worth noting that we can free the \emph{data} using this scheme, but not
 the entire \code{RC} node, since the \code{count} field may be set to a special
 value indicating that its data is freed.
 
-\note{Add note on differential RC:
+\note{Add note on differential RC:\@
 http://www.1024cores.net/home/lock-free-algorithms/object-life-time-management/differential-reference-counting}
 
 
@@ -426,7 +430,7 @@ http://www.1024cores.net/home/lock-free-algorithms/object-life-time-management/d
 %   free(node);
 % \end{lstlisting}
 
-\subsection{Epoch Based Reclamation}
+\section{Epoch Based Reclamation}
 Epoch Based Reclamation (EBR) was introduced by Fraser in~\cite{fraser2004practical}.
 It is a reclamation scheme based on the observation that most programs have no
 references to data structure memory in between of operations on the structure.
@@ -474,7 +478,7 @@ An immediate consequence of this is that EBR is not lock-free.
 \todo{Add proof? Pseudocode of stuff?}
 
 
-\subsection{Hazard Pointers}
+\section{Hazard Pointers}
 
 Hazard pointers was introduced by Michael in~\cite{michael2004hazard}.
 It is based on the observation that in most operations on data structure
@@ -501,27 +505,119 @@ just pin and unpin the thread before and after operations.
 \todo{Revisit RC here, with the stuff from the blog?
 Or mabye its better to just put it at the end of the subsection.}
 
-\subsection{Other Schemes}
+\section{Other Schemes}
 \note{We don't have time to implement all interesting schemes,
 but it would be nice to have them in the report}
 
 
-\section{Implementation}
+\chapter{Implementation}
 \note{How did we implement the schemes? What choices did we have to take?
 Whys. Also implementation problems, testing techniques, profiling setup etc.}
 
 \todo{Rename to methology?}
 
 
-\section{Results}
+\chapter{Results}
 \note{What did we run? Plot some graphs. What did we find out?
 Which scheme is better for which application?
 Runtime, power usage, etc.}
 
 
-\section{Discussion}
+\chapter{Discussion}
 \note{Whys. How was Rust? Why are the graphs as they are?
 What alternatives exists?}
+
+\begin{appendices}
+  \chapter{Rust's Toolchain}
+  The Rust toolchain consists of multiple tools.
+  There is the compiler \rustc{}, the build tool and dependency manager \cargo{},
+  and the toolchain manager \rustup.
+  \rustup{} is the preferred way of installing Rust\todo{source rustup.rs}.
+  \rustup{} also handles cross-compiling, i.e.\ compiling programs for a different
+  architecture.
+
+  A major part of Rust's ecosytem is \url{https://crates.io}, the package repository
+  for Rust. This is where packages handled by \cargo{} is downloaded from, by default.
+
+  \section*{Hello World}
+  We show how to install the Rust toolchain on a Unix based system.
+  Installing \rustup{} is done by downloading and running an install script from
+  \url{https://rustup.rs}:
+  \begin{lstlisting}[language=Bash,numbers=none]
+% curl https://sh.rustup.rs -sSf | sh
+  \end{lstlisting}
+  This installs \rustup{}, \cargo{}, and \rustc{}.
+  Next we want to use \cargo{} to make a project. This is done by \code{cargo init}.
+  \begin{lstlisting}[language=Bash,numbers=none]
+% cargo init --bin <name-of-project>
+  \end{lstlisting}
+  Thil will create a directory of the name provided, containing two files:
+  \code{Cargo.toml} and \code{src/main.rs}.
+  The former is the configuration file of the project, which contains:
+  metadata such as the project name, version, authors;
+  build options such as optimization levels, debug levels, optional flags;
+  and dependencies, with versioning and optional flags.
+  The initial \code{Cargo.toml} may look like Listing~\ref{lst:cargo.toml}.
+  \begin{lstlisting}[language=,basicstyle=\footnotesize\ttfamily,label=lst:cargo.toml,
+  caption=A newly generated \code{Cargo.toml}]
+[package]
+name = "project-name"
+version = "0.1.0"
+authors = ["Martin Hafskjold Thoresen <martinhath@gmail.com>"]
+
+[dependencies]
+  \end{lstlisting}
+  The other file, \code{src/main.rs} contains the entry point of the program:
+  \begin{lstlisting}
+fn main() {
+    println!("Hello, world!");
+}
+  \end{lstlisting}
+
+  To run the program, we use \cargo{}:
+  \begin{lstlisting}[language=Bash,numbers=none]
+% cargo run
+   Compiling project-name v0.1.0 (file:///<path>/)
+    Finished dev [unoptimized + debuginfo] target(s) in 0.68 secs
+     Running `target/debug/project-name`
+Hello, world!
+%
+  \end{lstlisting}
+
+  Cargo supports a project to build multiple executables, or no executables at all.
+  For more information about cargo see~\url{http://doc.crates.io/index.html}.
+
+
+  \section*{Setup for cross-compilation}
+  Other targets may be installed through \rustup{}. For instance, if we want to
+  make \code{aarch64-unknown-linux-gnu} available for cross-compilation we would run
+  \begin{lstlisting}[language=Bash,numbers=none]
+% rustup target add aarch64-unknown-linux-gnu
+  \end{lstlisting}
+  We can either pass in the target architecture to \cargo{} at each invocation,
+  or we can configure \cargo{} to use another target by default. We show the latter.
+  We make a new file in the project directory called \code{.cargo/config}
+  containing Listing~\ref{lst:cargo/config}
+  \begin{lstlisting}[language=,
+                     basicstyle=\footnotesize\ttfamily,
+                     label=lst:cargo/config,
+                     caption=Cargo configuration file for cross-compiling]
+[build]
+target = "aarch64-unknown-linux-gnu"
+
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+  \end{lstlisting}
+  This sets the default target to be \code{aarch-unknown-linux-gnu},
+  and specifies the linked to be used.
+  After this \code{cargo build} builds for the specified target.
+  The executable can be found in \code{./target/aarch-unknown-linux-gnu/debug/}
+  with the name of the project.
+
+
+
+
+\end{appendices}
 
 \bibliographystyle{acm}
 \bibliography{sources}
