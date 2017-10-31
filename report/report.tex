@@ -282,13 +282,29 @@ the mental model.
 
 \todo{A longer code example, comparing Rust to C++17?}
 
-\subsection{Examples}
-\note{Do we want this?}
-\note{look at examples for why the rules in Rust are useful to have enforced by the compiler}
+\subsection{Rationality behind the rules of Rust}
+The rules imposed by Rust might seem overly strict.
+In fact, in the Rust Survey 2017, $23\%$ of the participants answered
+that they did not use Rust because ``Rust is too intimidating,
+too hard to learn, or too complicated''\cite{rustsurvey2017}.
+We will see, however, that there are good reasons for the rules to exist.
 
-\todo{borrowing}
+The borrowing rules might be the easiest to get the motivation for.
+Since Rust has no garbage collector, we need to free our allocated memory.
+We must also ensure that all allocated meomry is freed exactly once.
+Borrowing is a natural solution to this problem. Since a value is only
+owned at one binding at a time, we can free memory when the owned binding
+goes out of scope.
 
-Assume we have a dynamically sized array (\code{Vec}), and that the exclusive
+However, ownership alone does not fix use-after-free problems, we need lifetimes for that.
+Without lifetimes it would be possible to make a reference to an owned value, and then
+have the owned value go out of scope and be dropped, while the reference is still alive
+in the program. Now the reference points to freed memory. Lifetimes ensures, statically,
+that no such references exists.
+
+Grasping the rationality behind the ``no aliased mutable references'' rule might
+be more difficult. Consider the following exapmle:
+assume we have a dynamically sized array (\code{Vec}), and that the exclusive
 mutable reference does not exist. Now we may have a reference to a value
 in the \code{Vec}, as well as a mutable reference to the \code{Vec} itself.
 Consider what happens when we push a new element into the \code{Vec};
@@ -296,8 +312,6 @@ the internal buffer may be full, so new memory must be allocated,
 the elements moved over, and the old buffer is \code{free}d.
 However, this makes the reference to the element invalid, since the memory
 it points to is now \code{free}d.
-
-\todo{lifetime}
 
 \subsection{Advanced Rust}
 \note{Show of why Rust is interesting, eg.\ how the abstractions can be used,
