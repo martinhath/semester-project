@@ -558,6 +558,7 @@ What alternatives exists?}
   build options such as optimization levels, debug levels, optional flags;
   and dependencies, with versioning and optional flags.
   The initial \code{Cargo.toml} may look like Listing~\ref{lst:cargo.toml}.
+  \begin{figure}[ht]
   \begin{lstlisting}[language=,basicstyle=\footnotesize\ttfamily,label=lst:cargo.toml,
   caption=A newly generated \code{Cargo.toml}]
 [package]
@@ -567,6 +568,7 @@ authors = ["Martin Hafskjold Thoresen <martinhath@gmail.com>"]
 
 [dependencies]
   \end{lstlisting}
+\end{figure}
   The other file, \code{src/main.rs} contains the entry point of the program:
   \begin{lstlisting}
 fn main() {
@@ -575,6 +577,7 @@ fn main() {
   \end{lstlisting}
 
   To run the program, we use \cargo{}:
+  \begin{figure}[ht]
   \begin{lstlisting}[language=Bash,numbers=none]
 % cargo run
    Compiling project-name v0.1.0 (file:///<path>/)
@@ -583,6 +586,7 @@ fn main() {
 Hello, world!
 %
   \end{lstlisting}
+\end{figure}
 
   Cargo supports a project to build multiple executables, or no executables at all.
   For more information about cargo see~\url{http://doc.crates.io/index.html}.
@@ -598,6 +602,7 @@ Hello, world!
   or we can configure \cargo{} to use another target by default. We show the latter.
   We make a new file in the project directory called \code{.cargo/config}
   containing Listing~\ref{lst:cargo/config}
+  \begin{figure}[ht]
   \begin{lstlisting}[language=,
                      basicstyle=\footnotesize\ttfamily,
                      label=lst:cargo/config,
@@ -608,6 +613,7 @@ target = "aarch64-unknown-linux-gnu"
 [target.aarch64-unknown-linux-gnu]
 linker = "aarch64-linux-gnu-gcc"
   \end{lstlisting}
+  \end{figure}
   This sets the default target to be \code{aarch-unknown-linux-gnu},
   and specifies the linked to be used.
   After this \code{cargo build} builds for the specified target.
