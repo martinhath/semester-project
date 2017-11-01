@@ -162,6 +162,8 @@ The C11 memory model (\note{from where is this actually?}) defined five memory o
 Acquire, Release, Acquire+Release, Sequentially Consistent, Relaxed, and
 \note{some more? note about unused thing?},
 Relaxed is the weakest, with no ordering constraints,
+\todo{rather write this in terms of exact semantics,
+eg. that previous writes must be visible}
 Acquire forbids subsequent operations to be moved before the operation,
 Release forbids previous operations to be moved after the operation,
 and Sequentially Consistent forbids both.
@@ -171,7 +173,14 @@ A way to remember the acquire and release orderings is that they
 hold the semantics of a lock, where we acquire and release the lock:
 memory operations inside the critical section is not allowed to be
 moved out on either side.
+When reasoning about the orderings however, it is better to think in terms of the semantics,
+\todo{balblabla}
 
+\note{Maybe we will not use other orderings than SeqCst for anything, for simplicity?
+Tiem etc. Also, ``Hans Boehm'' warns that it is very hard to get right, and that
+it is probably not possible to hide the choices of orderings from clients of libraries.
+We could write a paragraph here explaining what it's about, and then just say ``we will
+stick with \code{SeqCst}.''?}
 
 
 
