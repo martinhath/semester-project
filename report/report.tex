@@ -120,103 +120,6 @@ For a more thorough introduction see~\cite{herlihy2011art}.
 \note{parallel vs concurrent?}
 
 
-
-\section{Parallelism in Hardware}
-\note{reconsider having hardware and software sections.
-Maybe it's better to just have one?}
-\note{hardware ordering. Atomic operations (CAS, FA, etc.),
-notes on other futuristic atomic operations}
-\note{We should focus on the things that are currently supported in hardware,
-since this is more of a practical thing.}
-We consider multi-core CPUs with multiple levels of cache;
-This includes most modern CPUs, both desktop computers and laptops,
-as well as mobile devices such as smartphones and tablets.
-The first cache level, L1, is usually only used by one core,
-while the remaining levels, L2 (and maybe L3), are shared.
-This means that when a program is writing to memory,
-the same logical memory may be present in multiple
-physical locations on the CPU, which causes synchronization
-problems when this memory is written to. This is the
-problem of \emph{cache coherence}.
-
-\note{???}
-We would like our programs to be sequentially consistent.
-However, we also want our hardware to be performant, and it
-turns out that these two requirements are conflicting, and we have
-chosen the latter.
-
-Different CPU architectures have different memory models,
-which dicates how much the CPU is allowed to reorder reads and
-writes without brekaing the semantics of the program when ran
-sequentially.\
-x86 have a rahter strong memory model, meaning the CPU is very limited
-in its ability to reorder. ARM on the other hand, have a comparably weak
-meomry model.
-In both arcitechtures we have constructs for saying ``do not move
-memory operations across this line'', called \emph{memory fences} or
-\emph{barriers}. More details can be found in \todo{find source for this!}.
-
-\note{We should maybe move the Rust section to before this, so we can use
-\code{std::sync::atomic::Ordering}}.
-The C11 memory model (\note{from where is this actually?}) defined five memory orderings:
-Acquire, Release, Acquire+Release, Sequentially Consistent, Relaxed, and
-\note{some more? note about unused thing?},
-Relaxed is the weakest, with no ordering constraints,
-\todo{rather write this in terms of exact semantics,
-eg. that previous writes must be visible}
-Acquire forbids subsequent operations to be moved before the operation,
-Release forbids previous operations to be moved after the operation,
-and Sequentially Consistent forbids both.
-Acquire+Release is Acquire if the operation is a load,
-and Release if it is a store.
-A way to remember the acquire and release orderings is that they
-hold the semantics of a lock, where we acquire and release the lock:
-memory operations inside the critical section is not allowed to be
-moved out on either side.
-When reasoning about the orderings however, it is better to think in terms of the semantics,
-\todo{balblabla}
-
-\note{Maybe we will not use other orderings than SeqCst for anything, for simplicity?
-Tiem etc. Also, ``Hans Boehm'' warns that it is very hard to get right, and that
-it is probably not possible to hide the choices of orderings from clients of libraries.
-We could write a paragraph here explaining what it's about, and then just say ``we will
-stick with \code{SeqCst}.''?}
-
-
-
-\note{blabalba}
-
-
-
-
-
-\section{Parallelism in Software}
-\note{Hardware works such and such, but how does programmers handle these things?
-Mention \code{volatile}? Look at instructions?
-Many programmers does not think about cache problems. What about
-concurrency problems? May they also be ignored? (no)}
-
-Modern compilers \emph{and CPUs} reorder instructions when it improves
-performance if they can prove that the end result is the same.
-In sequential code there is no way to notice the difference.
-Consider Listing~\ref{lst:reordering}, and assume variables
-are initialized to 0.
-\begin{lstlisting}[caption=Instruction reordering,label=lst:reordering]
-// Thread A                     // Thread B
-while (f == 0)                  x = 1
-  ;                             f = 1
-print(x)
-\end{lstlisting}
-When ran sequentially (alternating between the two), we would observe
-no difference if the assignments were reordered. However, when run
-concurrently thread B might decide to assign \code{f = 1} first,
-and thread A will risk printing \code{0} instead of \code{1},
-which was the only case in the sequential world.
-
-We can fix this problem by using a fence.
-
-
-
 \section{Rust}
 % New programming language, memory safety without GC, etc.
 \todo{This doesn't read very well. Fix.
@@ -343,6 +246,102 @@ Copying and creating raw pointers are safe operations, but reading a raw pointer
 so the reader can see why the language as a whole is interesting.
 We could also add some stuff about the asm \code{rustc} generates,
 demonstrating ``zero-cost abstractions''.}
+
+
+
+
+\section{Parallelism in Hardware}
+\note{reconsider having hardware and software sections.
+Maybe it's better to just have one?}
+\note{hardware ordering. Atomic operations (CAS, FA, etc.),
+notes on other futuristic atomic operations}
+\note{We should focus on the things that are currently supported in hardware,
+since this is more of a practical thing.}
+We consider multi-core CPUs with multiple levels of cache;
+This includes most modern CPUs, both desktop computers and laptops,
+as well as mobile devices such as smartphones and tablets.
+The first cache level, L1, is usually only used by one core,
+while the remaining levels, L2 (and maybe L3), are shared.
+This means that when a program is writing to memory,
+the same logical memory may be present in multiple
+physical locations on the CPU, which causes synchronization
+problems when this memory is written to. This is the
+problem of \emph{cache coherence}.
+
+\note{???}
+We would like our programs to be sequentially consistent.
+However, we also want our hardware to be performant, and it
+turns out that these two requirements are conflicting, and we have
+chosen the latter.
+
+Different CPU architectures have different memory models,
+which dicates how much the CPU is allowed to reorder reads and
+writes without brekaing the semantics of the program when ran
+sequentially.\
+x86 have a rahter strong memory model, meaning the CPU is very limited
+in its ability to reorder. ARM on the other hand, have a comparably weak
+meomry model.
+In both arcitechtures we have constructs for saying ``do not move
+memory operations across this line'', called \emph{memory fences} or
+\emph{barriers}. More details can be found in \todo{find source for this!}.
+
+\note{We should maybe move the Rust section to before this, so we can use
+\code{std::sync::atomic::Ordering}}.
+The C11 memory model (\note{from where is this actually?}) defined five memory orderings:
+Acquire, Release, Acquire+Release, Sequentially Consistent, Relaxed, and
+\note{some more? note about unused thing?},
+Relaxed is the weakest, with no ordering constraints,
+\todo{rather write this in terms of exact semantics,
+eg. that previous writes must be visible}
+Acquire forbids subsequent operations to be moved before the operation,
+Release forbids previous operations to be moved after the operation,
+and Sequentially Consistent forbids both.
+Acquire+Release is Acquire if the operation is a load,
+and Release if it is a store.
+A way to remember the acquire and release orderings is that they
+hold the semantics of a lock, where we acquire and release the lock:
+memory operations inside the critical section is not allowed to be
+moved out on either side.
+When reasoning about the orderings however, it is better to think in terms of the semantics,
+\todo{balblabla}
+
+\note{Maybe we will not use other orderings than SeqCst for anything, for simplicity?
+Tiem etc. Also, ``Hans Boehm'' warns that it is very hard to get right, and that
+it is probably not possible to hide the choices of orderings from clients of libraries.
+We could write a paragraph here explaining what it's about, and then just say ``we will
+stick with \code{SeqCst}.''?}
+
+
+
+\note{blabalba}
+
+
+
+\section{Parallelism in Software}
+\note{Hardware works such and such, but how does programmers handle these things?
+Mention \code{volatile}? Look at instructions?
+Many programmers does not think about cache problems. What about
+concurrency problems? May they also be ignored? (no)}
+
+Modern compilers \emph{and CPUs} reorder instructions when it improves
+performance if they can prove that the end result is the same.
+In sequential code there is no way to notice the difference.
+Consider Listing~\ref{lst:reordering}, and assume variables
+are initialized to 0.
+\begin{lstlisting}[caption=Instruction reordering,label=lst:reordering]
+// Thread A                     // Thread B
+while (f == 0)                  x = 1
+  ;                             f = 1
+print(x)
+\end{lstlisting}
+When ran sequentially (alternating between the two), we would observe
+no difference if the assignments were reordered. However, when run
+concurrently thread B might decide to assign \code{f = 1} first,
+and thread A will risk printing \code{0} instead of \code{1},
+which was the only case in the sequential world.
+
+We can fix this problem by using a fence.
+
 
 
 \chapter{Memory Reclamation}
@@ -533,11 +532,46 @@ Or mabye its better to just put it at the end of the subsection.}
 but it would be nice to have them in the report}
 
 
-\chapter{Implementation}
+\chapter{Methology}
 \note{How did we implement the schemes? What choices did we have to take?
 Whys. Also implementation problems, testing techniques, profiling setup etc.}
 
-\todo{Rename to methology?}
+\section{Implementation}
+There is often a disconnect between the idea of a system and the implementation of that system.
+Algorithms are usually explained at such a high level that a straight forward implementation
+in a given language is either impossible, impractical, or leads to atypical code.
+Programming is more craft than science, so when implementing a system we must reconsider
+the system in the context of the language we are using.
+
+
+\subsection{Atomics}
+\note{Write about atomic types}
+
+\subsection{Data Structures}
+\note{some short intro about DS}
+
+\subsubsection{Queue}
+\note{how did we implement the queue?}
+
+\subsubsection{List}
+\note{how did we implement the list?}
+
+\subsection{Epoch Based Reclamation}
+\note{How did we implement ebr? Tradeoffs}
+
+\subsection{Hazard Pointers}
+\note{How did we implement hp? Tradeoffs}
+
+\section{Verification}
+Programming concurrent sytems is hard.
+Verifying \emph{any} system is also hard.
+Therefore, we are lead to belive that verifying a concurrent system is \emph{very} hard.
+This seems to be the case.
+\note{this is probably too dumd and ``funny''}.
+
+\section{Profiling}
+\note{How do we benchmark?}
+\todo{actually find out this!}
 
 
 \chapter{Results}
