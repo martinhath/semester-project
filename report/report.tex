@@ -98,6 +98,9 @@ the memory is thus \emph{reclaimed}.
 If we want to ``mark'' memory as freed without freeing it (that is, the program
 still has exclusive use of it) we say we \emph{retire} the memory
 (reasons for doing so will become apparent).
+In concurrent settings, we rist accessing memory at the same time;
+a \emph{data race} is when multiple threads are operating on the same
+memory at simulnatiously, and where at least one operation is a write.
 
 Both modern compilers and CPUs may reorder program instructions
 if they think it will improve performace, for instance by
@@ -121,6 +124,7 @@ For a more thorough introduction see~\cite{herlihy2011art}.
 
 
 \section{Rust}
+\todo{Add note about not a formal spec}
 % New programming language, memory safety without GC, etc.
 \todo{This doesn't read very well. Fix.
 This should be written as if you have never heard of Rust,
@@ -274,16 +278,26 @@ However, we also want our hardware to be performant, and it
 turns out that these two requirements are conflicting, and we have
 chosen the latter.
 
-Different CPU architectures have different memory models,
-which dicates how much the CPU is allowed to reorder reads and
-writes without brekaing the semantics of the program when ran
-sequentially.\
+
+\todo{could probably make this better: memory models isn't all about reordering.}
+Different CPU architectures have different memory models, which dicates
+how much the CPU is allowed to reorder reads and writes without brekaing
+the semantics of the program when ran sequentially.
+For this reason, arcitechtures have constructs for saying ``do not move memory operations
+across this line'', called \emph{memory fences} or \emph{barriers}.
 x86 have a rahter strong memory model, meaning the CPU is very limited
-in its ability to reorder. ARM on the other hand, have a comparably weak
-meomry model.
-In both arcitechtures we have constructs for saying ``do not move
-memory operations across this line'', called \emph{memory fences} or
-\emph{barriers}. More details can be found in \todo{find source for this!}.
+in its ability to reorder. For instance, x86 forbids reads to be reordered
+with other reads, and writes with other writes. It also forbids any reordering
+with locked instructions; this is very strict, as the preferred instruction used
+for sequential consistent atomic store is a locked instruction, meaning
+atomic stores are full fences.
+ARM on the other hand, have a comparably weak memory model. A disadvantage of this
+is that sequentially consitent atomics require full fences for both loads and stores,
+since they are allowed to be reordered.
+ARMv8 fixes this by having explicit instructions for SC load and store.
+For more information on x86, see Chapter 8.2.2 in~\cite{intel64};
+for information about ARMv7 and ARMv8 see \todo{sources}.
+
 
 \note{We should maybe move the Rust section to before this, so we can use
 \code{std::sync::atomic::Ordering}}.
@@ -507,21 +521,28 @@ It is based on the observation that in most operations on data structure
 we only need a small constant number of references to memory that is shared
 between running threads. The technique exploits this by allowing each
 thread to reigster the pointers, called \emph{hazard pointers},
-the thread is using at a given instant. This way other threads can tell
-if memory they are operating on is used by other threads.
-The number of poiters we need varies with the algorithms performed,
+the thread wants to use, but which it cannot be sure are valid.
+For instance, the $next$ pointers in a linked list would be registered
+as hazardous, as they might point to memory that is already removed from the list.
+By registering the pointers that are hazardous, other threads can refrain from
+changing the referenced data.
+As with RC we there are some compilcations here: the thread might be preempted
+after reading the hazardous pointer, but before registering it as hazardous.
+The number of pointers we need varies with the algorithms performed,
 but a typical value is one or two.
 
-\note{This doesn't really make sense - both techniques requires
-some manual work, be it pointer registration or pinning stuff.
-Also, while this might be a difference in the two schemes as a whole,
-it is probably more interesting to take the comparison in the implementation part.}
-A big difference in usage of HP from EBR is that identifying which
-pointers we need to register is a task which cannot be automated.
-We need to manually go though our algorithms and look for pointer
-usage which may fail, and add registration code inline.
-This is of great contrast to EBR, in which it was possible to
-just pin and unpin the thread before and after operations.
+\note{This is somewhat backwards: we have already looked at HP informally.}
+The paper by Michael formalizes hazardous pointers, and includes a proof
+of correctness. We will settle for a informal view of them.
+A challenge in usage of HP is that we need to identify which pointers
+in our algorithms are hazardous. In comparison, we have no such concerns in EBR, in
+which we only need to register memory as garbage when we remove it from the
+data structure (we do need to make sure that this memory is only registered
+by a single thread).
+This imposes the choice of memory reclamation onto the programmer of
+the data structures using them. In other words, it is unlikely that
+HP can be used ``transparently'', in the sense that we can seamlessly
+change between, say, HP and EBR\@.
 
 
 \todo{Revisit RC here, with the stuff from the blog?
