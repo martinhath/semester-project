@@ -6,6 +6,7 @@
 \usepackage{xcolor}
 \usepackage{tikz}
 \usepackage{hyperref}
+\usepackage{parskip}
 \usetikzlibrary{positioning}
 \usetikzlibrary{shapes,decorations,shadows}
 
@@ -146,12 +147,14 @@ use \code{return}, as in C.  Similiar to C++, Rust programmers prefers
 C++.  As with variables, references are immutable by default; the value they
 point to cannot be mutated.
 
+\begin{figure}
 \begin{lstlisting}[firstnumber=last]
 // ERROR:
 fn add_five(arg: &u32) { *arg += 5; }
 // OK:
 fn add_five(arg: &mut u32) { *arg += 5; }
 \end{lstlisting}
+\end{figure}
 
 Mutable references cannot alias; that is, it is not allowed to have multiple
 \code{\&mut} to the same data, and it is not allowed to have one \code{\&mut}
@@ -178,8 +181,8 @@ management directly. It does however add to the programmers mental overhead,
 since lifetime constraints and ownerships of the data must be tracked by their
 the mental model.
 
+\todo{Mention traits?}
 \todo{Add links to The Book ++}
-
 \todo{A longer code example, comparing Rust to C++17?}
 
 \subsection{Rationality behind the rules of Rust}
@@ -322,12 +325,14 @@ Modern compilers and CPUs reorder instructions when it improves
 performance if they can prove that the end result is the same.  In sequential
 code there is no way to notice the difference.  Consider
 Listing~\ref{lst:reordering}, and assume variables are initialized to 0.
+\begin{figure}[ht]
 \begin{lstlisting}[caption=Instruction reordering,label=lst:reordering]
 // Thread A                     // Thread B
 while (f == 0)                  x = 1
   ;                             f = 1
 print(x)
 \end{lstlisting}
+\end{figure}
 When ran sequentially (alternating between the two), we would observe no
 difference if the assignments were reordered. However, when run concurrently
 thread B might decide to assign \code{f = 1} first, and thread A will risk
@@ -337,6 +342,7 @@ sequential world.
 A solution to this problem is to use a memory fence, in order to explicitly
 disallow any reordering past it, as in Listing~\ref{lst:mem-fence}.
 
+\begin{figure}[ht]
 \begin{lstlisting}[caption=Memory fence for synchronization,label=lst:mem-fence]
 // Thread A                     // Thread B
 while (f == 0)                  x = 1
@@ -344,6 +350,7 @@ while (f == 0)                  x = 1
 fence()                         f = 1
 print(x)
 \end{lstlisting}
+\end{figure}
 However, fences are expensive. We would rather want to just make sure that
 there is an ordering relationship between \code{f} and \code{x}. We can obtain
 this by using \code{Acquire} and \code{Release} semantics on \code{f}, like in
@@ -351,13 +358,20 @@ Listing~\ref{lst:acqrel}. The \code{Release} in Thread B ensures that the
 assignment \code{x =1 } is not moved after the store to \code{f}, and the
 \code{Acquire} load in Thread A ensures that the access to \code{x} is not moved
 above the load of \code{f}. This gives us the desired semantics.
+\begin{figure}[ht]
 \begin{lstlisting}[caption=Synchronization using orderings,label=lst:acqrel]
 // Thread A                     // Thread B
 while (f.load(Acquire) == 0)    x = 1
   ;                             f.store(1, Release)
 print(x)
 \end{lstlisting}
+\end{figure}
 
+
+\section{The ABA Problem}
+The ABA problem is one of the most known problems in concurrent programming,
+especially within the topic of memory reclamation.
+\note{explain what this is about, why it's relevant to MR.}
 
 
 \chapter{Memory Reclamation}
@@ -510,31 +524,35 @@ reclamation.  An immediate consequence of this is that EBR is not lock-free.
 
 \section{Hazard Pointers}
 
-Hazard pointers was introduced by Michael in~\cite{michael2004hazard}.  It is
+Hazard pointers was introduced by Michael in~\cite{michael2004hazard}.
+The paper by Michael formalizes hazardous pointers, and includes a proof of
+correctness. We will settle for a informal view of them. It is
 based on the observation that in most operations on data structure we only need
 a small constant number of references to memory that is shared between running
 threads. The technique exploits this by allowing each thread to reigster the
 pointers, called \emph{hazard pointers}, the thread wants to use, but which it
-cannot be sure are valid.  For instance, the $next$ pointers in a linked list
+cannot be sure are valid. The number of pointers we need varies with the
+algorithm performed, but a typical value is one or two.
+
+For instance, the $next$ pointers in a linked list
 would be registered as hazardous, as they might point to memory that is already
 removed from the list.  By registering the pointers that are hazardous, other
-threads can refrain from changing the referenced data.  As with RC we there are
-some compilcations here: the thread might be preempted after reading the
-hazardous pointer, but before registering it as hazardous.  The number of
-pointers we need varies with the algorithms performed, but a typical value is
-one or two.
+threads can refrain from changing the referenced data.  As with RC there are
+some compilcations: the thread might be preempted after reading the
+hazardous pointer, but before registering it as hazardous; then another thread
+may have removed the referenced data.  For this reason, we must \emph{validate}
+the reference after registering it as hazardous. This can be problematic for
+structures in which there is no obvious way of verifying the data. For other
+structures this is just a matter of reading a pointer again.
 
-\note{This is somewhat backwards: we have already looked at HP informally.} The
-paper by Michael formalizes hazardous pointers, and includes a proof of
-correctness. We will settle for a informal view of them.  A challenge in usage
-of HP is that we need to identify which pointers in our algorithms are
-hazardous. In comparison, we have no such concerns in EBR, in which we only
-need to register memory as garbage when we remove it from the data structure
-(we do need to make sure that this memory is only registered by a single
-thread).  This imposes the choice of memory reclamation onto the programmer of
-the data structures using them. In other words, it is unlikely that HP can be
-used ``transparently'', in the sense that we can seamlessly change between,
-say, HP and EBR\@.
+A challenge in usage of HP is that we need to identify which pointers in our
+algorithms are hazardous. In comparison, we have no such concerns in EBR, in
+which we only need to register memory as garbage when we remove it from the
+data structure (we do need to make sure that this memory is only registered by
+a single thread).  This imposes the choice of memory reclamation onto the
+programmer of the data structures using them. In other words, it is unlikely
+that HP can be used ``transparently'', in the sense that we can seamlessly
+change between, say, HP and EBR\@.
 
 
 \todo{Revisit RC here, with the stuff from the blog?
