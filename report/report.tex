@@ -19,15 +19,13 @@
 
 \begin{abstract}
   \todo{update this!}
-  Concurrent programs, like any other program, produces garbage.
-  In languages that do not have a garbage collector, freeing used
-  memory needs to be handeled by the programmer, or through other
-  means by the language.
-  This report compares 3 different memory reclamation schemes:
-  epoch based reclamation, hazard pointers, and reference counting.
-  We look at how they perform when used in different common concurrent
-  data structures, such as Queues, Lists, and (probably not) Skip-Lists,
-  on the ARM platform.
+  Concurrent programs, like any other program, produces garbage.  In languages
+  that do not have a garbage collector, freeing used memory needs to be
+  handeled by the programmer, or through other means by the language.  This
+  report compares 3 different memory reclamation schemes: epoch based
+  reclamation, hazard pointers, and reference counting.  We look at how they
+  perform when used in different common concurrent data structures, such as
+  Queues, Lists, and (probably not) Skip-Lists, on the ARM platform.
 \end{abstract}
 
 \chapter{Introduction}
@@ -40,41 +38,37 @@ lkajsd
 
 \chapter{Background}
 
-\note{I ment to write a quick intro on parallelism, and why we care.
-Maybe this is out of scope?}
-In 1965 Gordon Moore stated what is now knows as \emph{Moore's Law},
-which roughly states that the number of transistors on integrated circuits
-will double every 18 months.
-The law has also been used to describe the clock speed of central processing
-units (CPUs).
-However, this exponential growth came to a halt during the 2000s, where
-the clock speed of CPUs stopped between 3 GHz and 4 GHz.
-Over 10 years later high end consumer CPUs still have a clock
-speed in that same range, and the performance increase of modern CPUs
-has mainly been due to increase in parallelism\note{has it, though?
-Or is it more that CPUs hasn't really improved that much?}.
-This improvement however, has not been as noticable as the former improvements in
-clock speed. This is because programs already written cannot automatically
-use the extra parallelism that newer architectures give us;
-Parallelism needs to be accounted for by programmers.
+\note{I ment to write a quick intro on parallelism, and why we care.  Maybe this
+this is out of scope?}
+In 1965 Gordon Moore stated what is now knows as \emph{Moore's Law}, which
+roughly states that the number of transistors on integrated circuits will
+double every 18 months.  The law has also been used to describe the clock speed
+of central processing units (CPUs).  However, this exponential growth came to a
+halt during the 2000s, where the clock speed of CPUs stopped between 3 GHz and
+4 GHz.  Over 10 years later high end consumer CPUs still have a clock speed in
+that same range, and the performance increase of modern CPUs has mainly been
+due to increase in parallelism\note{has it, though?  Or is it more that CPUs
+hasn't really improved that much?}.  This improvement however, has not been as
+noticable as the former improvements in clock speed. This is because programs
+already written cannot automatically use the extra parallelism that newer
+architectures give us; Parallelism needs to be accounted for by programmers.
 
 \note{fix this. It reads alright on its own, but the previous paragraph ends
 with the same thing, making it very weird to read.}
 Despite having multi-core architectures as the most central performance
-improvement in CPUs, parallelism is not a success story for programmers.
-Most mainstream programming languages does not have first class support
-for parallel constructs, and synchronization and work management\note{?} must
-still be handeled explicitly by the programmer, using fairly low level
-constructs, such as mutexes and threads \note{what are alternatives?}.
-\note{what is the motivation behind this? Do we want to make the claim
-that Rust is making low level stuff more approachable, and that we can
-help improving the performace of programs written by having CMR in Rust?}
+improvement in CPUs, parallelism is not a success story for programmers.  Most
+mainstream programming languages does not have first class support for parallel
+constructs, and synchronization and work management\note{?} must still be
+handeled explicitly by the programmer, using fairly low level constructs, such
+as mutexes and threads \note{what are alternatives?}.
+\note{what is the motivation behind this? Do we want to make the claim that
+Rust is making low level stuff more approachable, and that we can help
+improving the performace of programs written by having CMR in Rust?}
 In short, parallelism has yet to be approachable for a lot of programmers.
-\note{If we are going to complain on the state of parallel programming
-we should at least mention some alternatives.}
-\note{Parallelism isn't a success story for programmers.
-Hard, error-prone, even simple things goes wrong.
-Need effective abstractions to improve this. ??}
+\note{If we are going to complain on the state of parallel programming we
+should at least mention some alternatives.}
+\note{Parallelism isn't a success story for programmers.  Hard, error-prone,
+even simple things goes wrong.  Need effective abstractions to improve this.??}
 
 
 \subsection*{\note{TODO LIST}}
@@ -89,35 +83,29 @@ Consider adding MS queue or something to show pitfalls in concurrent programming
 }
 
 \section{Terminology}
-We start with basic terminology of memory management.
-Most of the programs we write \emph{allocate} memory, meaning
-requesting a memory range from the OS for exlusive use by the program.
-This memory is then \emph{deallocated}, or \emph{freed}, when we are done with it,
-so that the memory may be used at a later time;
-the memory is thus \emph{reclaimed}.
-If we want to ``mark'' memory as freed without freeing it (that is, the program
-still has exclusive use of it) we say we \emph{retire} the memory
-(reasons for doing so will become apparent).
-In concurrent settings, we rist accessing memory at the same time;
-a \emph{data race} is when multiple threads are operating on the same
-memory at simulnatiously, and where at least one operation is a write.
+We start with basic terminology of memory management.  Most of the programs we
+write \emph{allocate} memory, meaning requesting a memory range from the OS for
+exlusive use by the program.  This memory is then \emph{deallocated}, or
+\emph{freed}, when we are done with it, so that the memory may be used at a
+later time; the memory is thus \emph{reclaimed}.  If we want to ``mark'' memory
+as freed without freeing it (that is, the program still has exclusive use of
+it) we say we \emph{retire} the memory (reasons for doing so will become
+apparent).  In concurrent settings, we rist accessing memory at the same time;
+a \emph{data race} is when multiple threads are operating on the same memory at
+simulnatiously, and where at least one operation is a write.
 
-Both modern compilers and CPUs may reorder program instructions
-if they think it will improve performace, for instance by
-improving memory locality and thus improving cache behaviour,
-or reduce pipeline stalling. This may or may not be acceptable by
-the program. The guarantee that the instructions executed
-appear to take effect in program order is called
-\emph{sequential consistency}, and was defined by Leslie Lamport
-in 1979\todo{source here}.
-We call a system in which threads can be prevented from making
-progress \emph{blocking}. For instance, a system using mutexes
-is blocking, since a second thread may acquire the mutex,
-and be preempted. The oposite of blocking is \emph{non-blocking}.
-A method is \emph{lock-free} if we have a guarantee that
-\emph{some} thread will make progress.
-Note that any given thread may be blocked for an infinite amount of time.
-For a more thorough introduction see~\cite{herlihy2011art}.
+Both modern compilers and CPUs may reorder program instructions if they think
+it will improve performace, for instance by improving memory locality and thus
+improving cache behaviour, or reduce pipeline stalling. This may or may not be
+acceptable by the program. The guarantee that the instructions executed appear
+to take effect in program order is called \emph{sequential consistency}, and
+was defined by Leslie Lamport in 1979\todo{source here}.  We call a system in
+which threads can be prevented from making progress \emph{blocking}. For
+instance, a system using mutexes is blocking, since a second thread may acquire
+the mutex, and be preempted. The oposite of blocking is \emph{non-blocking}.  A
+method is \emph{lock-free} if we have a guarantee that \emph{some} thread will
+make progress.  Note that any given thread may be blocked for an infinite
+amount of time.  For a more thorough introduction see~\cite{herlihy2011art}.
 
 
 \note{parallel vs concurrent?}
@@ -127,41 +115,36 @@ For a more thorough introduction see~\cite{herlihy2011art}.
 \todo{Add note about not a formal spec}
 % New programming language, memory safety without GC, etc.
 \todo{This doesn't read very well. Fix.
-This should be written as if you have never heard of Rust,
-but if youre fairly familiar with PL terms.
-Worst case, we can refer to the PL book if it goes out of hand.}
-Rust is a programming language which focus is safety, speed, and concurrency.
-It originally emerged from Mozilla Labs in \todo{20??} but is now freely developed
-by over \todo{12345} contributors.
-Version 1.0 was released in May 2015, and the current stable version is 1.21.
-The language is compiled and typed, and features
-type inference and virtually no runtime.
+This should be written as if you have never heard of Rust, but if youre fairly
+familiar with PL terms.  Worst case, we can refer to the PL book if it goes out
+of hand.} Rust is a programming language which focus is safety, speed, and
+concurrency.  It originally emerged from Mozilla Labs in \todo{20??} but is now
+freely developed by over \todo{12345} contributors.  Version 1.0 was released
+in May 2015, and the current stable version is 1.21.  The language is compiled
+and typed, and features type inference and virtually no runtime.
 
 The language differs from most other languages in that it features linear types
-by its \emph{ownership} semantics.
-Values are either \emph{owned} or \emph{borrowed} by its scope.
-When an owned value goes out of scope Rust's ownership rules guarantees that
-there are no other references to the object and it can be safely \emph{dropped}
-by running its destructor when applicable.
+by its \emph{ownership} semantics.  Values are either \emph{owned} or
+\emph{borrowed} by its scope.  When an owned value goes out of scope Rust's
+ownership rules guarantees that there are no other references to the object and
+it can be safely \emph{dropped} by running its destructor when applicable.
 This way the programmer does not have to manually manage memory.
 
 \subsection{A Crash Course in Rust}
 
-Rust's syntax is based on that of C and OCaml.
-Variable bindings are created with the \code{let} construct,
-and they are immutable by default, unless marked with \code{mut}.
-Functions are declared with \code{fn}, and blocks are surrounded by curly brackets.
-The scope operator is \code{::}.
+Rust's syntax is based on that of C and OCaml.  Variable bindings are created
+with the \code{let} construct, and they are immutable by default, unless marked
+with \code{mut}.  Functions are declared with \code{fn}, and blocks are
+surrounded by curly brackets.  The scope operator is \code{::}.
 
 Almost all syntactic constructs in Rust are expressions, including blocks and
-\code{if} statements.
-Expressions terminated by a semicolon have the value of \emph{unit} (\code{()}).
-The return value of a function is the value of its block, which again is the final
-expression in the block. Alternatively we can use \code{return}, as in C.
-Similiar to C++, Rust programmers prefers \emph{references} over raw pointers.
-We use \code{\&} and \code{*} as in C and C++.
-As with variables, references are immutable by default; the value they point
-to cannot be mutated.
+\code{if} statements.  Expressions terminated by a semicolon have the value of
+\emph{unit} (\code{()}).  The return value of a function is the value of its
+block, which again is the final expression in the block. Alternatively we can
+use \code{return}, as in C.  Similiar to C++, Rust programmers prefers
+\emph{references} over raw pointers.  We use \code{\&} and \code{*} as in C and
+C++.  As with variables, references are immutable by default; the value they
+point to cannot be mutated.
 
 \begin{lstlisting}[firstnumber=last]
 // ERROR:
@@ -170,23 +153,24 @@ fn add_five(arg: &u32) { *arg += 5; }
 fn add_five(arg: &mut u32) { *arg += 5; }
 \end{lstlisting}
 
-Mutable references cannot alias; that is, it is not allowed to have multiple \code{\&mut}
-to the same data, and it is not allowed to have one \code{\&mut} in addition to other
-references.
+Mutable references cannot alias; that is, it is not allowed to have multiple
+\code{\&mut} to the same data, and it is not allowed to have one \code{\&mut}
+in addition to other references.
 
-References are guaranteed to be valid, through Rusts usage of \emph{lifetimes}.
-A reference is only allowed to live for as long as the data it points to.
-This makes it impossible to return a reference to local stack variable in a function:
+References are guaranteed to be valid, through Rusts usage of
+\emph{lifetimes}.  A reference is only allowed to live for as long as the data
+it points to.  This makes it impossible to return a reference to local stack
+variable in a function:
 \begin{lstlisting}[firstnumber=last]
 fn add_five() -> &u32 { let n: u32 = 1; &n } // ERROR
 \end{lstlisting}
 
-A central point of Rusts philosophy is to build safe abtractions for programmers to use.
-For instance, \code{std::box::Box<T>} is a type that heap allocates a value of type \code{T}.
-The constructor will allocate the memory, and the destructor will free the memory.
-Since references can never outlive the value it references, any other pointer to the value
-is guaranteed by the compiler to be valid.
-This way we get a safe abtraction over heap allocation.
+A central point of Rusts philosophy is to build safe abtractions for
+programmers to use.  For instance, \code{std::box::Box<T>} is a type that heap
+allocates a value of type \code{T}.  The constructor will allocate the memory,
+and the destructor will free the memory.  Since references can never outlive
+the value it references, any other pointer to the value is guaranteed by the
+compiler to be valid.  This way we get a safe abtraction over heap allocation.
 
 Through lifetime tracking and the ownership model, Rust avoids the need for a
 garbage collector, while still allowing the programmer to not handle memory
@@ -199,50 +183,50 @@ the mental model.
 \todo{A longer code example, comparing Rust to C++17?}
 
 \subsection{Rationality behind the rules of Rust}
-The rules imposed by Rust might seem overly strict.
-In fact, in the Rust Survey 2017, $23\%$ of the participants answered
-that they did not use Rust because ``Rust is too intimidating,
-too hard to learn, or too complicated''\cite{rustsurvey2017}.
-We will see, however, that there are good reasons for the rules to exist.
+The rules imposed by Rust might seem overly strict.  In fact, in the Rust
+Survey 2017, $23\%$ of the participants answered that they did not use Rust
+because ``Rust is too intimidating, too hard to learn, or too
+complicated''\cite{rustsurvey2017}.  We will see, however, that there are good
+reasons for the rules to exist.
 
-The borrowing rules might be the easiest to get the motivation for.
-Since Rust has no garbage collector, we need to free our allocated memory.
-We must also ensure that all allocated meomry is freed exactly once.
-Borrowing is a natural solution to this problem. Since a value is only
-owned at one binding at a time, we can free memory when the owned binding
-goes out of scope.
+The borrowing rules might be the easiest to get the motivation for.  Since Rust
+has no garbage collector, we need to free our allocated memory.  We must also
+ensure that all allocated meomry is freed exactly once.  Borrowing is a natural
+solution to this problem. Since a value is only owned at one binding at a time,
+we can free memory when the owned binding goes out of scope.
 
-However, ownership alone does not fix use-after-free problems, we need lifetimes for that.
-Without lifetimes it would be possible to make a reference to an owned value, and then
-have the owned value go out of scope and be dropped, while the reference is still alive
-in the program. Now the reference points to freed memory. Lifetimes ensures, statically,
-that no such references exists.
+However, ownership alone does not fix use-after-free problems, we need
+lifetimes for that.  Without lifetimes it would be possible to make a reference
+to an owned value, and then have the owned value go out of scope and be
+dropped, while the reference is still alive in the program. Now the reference
+points to freed memory. Lifetimes ensures, statically, that no such references
+exists.
 
-Grasping the rationality behind the ``no aliased mutable references'' rule might
-be more difficult. Consider the following exapmle:
-assume we have a dynamically sized array (\code{Vec}), and that the exclusive
-mutable reference does not exist. Now we may have a reference to a value
-in the \code{Vec}, as well as a mutable reference to the \code{Vec} itself.
-Consider what happens when we push a new element into the \code{Vec};
-the internal buffer may be full, so new memory must be allocated,
-the elements moved over, and the old buffer is \code{free}d.
-However, this makes the reference to the element invalid, since the memory
-it points to is now \code{free}d.
+Grasping the rationality behind the ``no aliased mutable references'' rule
+might be more difficult. Consider the following exapmle: assume we have a
+dynamically sized array (\code{Vec}), and that the exclusive mutable reference
+does not exist. Now we may have a reference to a value in the \code{Vec}, as
+well as a mutable reference to the \code{Vec} itself.  Consider what happens
+when we push a new element into the \code{Vec}; the internal buffer may be
+full, so new memory must be allocated, the elements moved over, and the old
+buffer is \code{free}d.  However, this makes the reference to the element
+invalid, since the memory it points to is now \code{free}d.
 
 \subsection{Advanced Rust}
 \note{Show of why Rust is interesting, eg.\ how the abstractions can be used,
 and why it makes sense to look at Rust.}
 \todo{Title of the subchapter}
 \todo{Ordering of this stuff}
-While Rust features rather strict rules for ownership and lifetimes of all values,
-the programmer may bend these rules as they wish.
-For instance it is possible to leak a value by not running its destructor,
-by using the \code{std::mem::forget} function, or to explicitly run the destrutor of
-a value, by calling \code{std::mem::drop}.
+While Rust features rather strict rules for ownership and lifetimes of all
+values, the programmer may bend these rules as they wish.  For instance it is
+possible to leak a value by not running its destructor, by using the
+\code{std::mem::forget} function, or to explicitly run the destrutor of a
+value, by calling \code{std::mem::drop}.
 
-Rust also have \emph{raw pointers}, which behaves like regular pointers in C and C++.
-Copying and creating raw pointers are safe operations, but reading a raw pointer is
-\code{unsafe}, as there are no guarantee on the memory we are reading.
+Rust also have \emph{raw pointers}, which behaves like regular pointers in C
+and C++.  Copying and creating raw pointers are safe operations, but reading a
+raw pointer is \code{unsafe}, as there are no guarantee on the memory we are
+reading.
 
 \todo{raw pointers, safe abstractions, some other things.}
 
@@ -255,75 +239,65 @@ demonstrating ``zero-cost abstractions''.}
 
 
 \section{Parallelism in Hardware}
-\note{reconsider having hardware and software sections.
-Maybe it's better to just have one?}
-\note{hardware ordering. Atomic operations (CAS, FA, etc.),
-notes on other futuristic atomic operations}
-\note{We should focus on the things that are currently supported in hardware,
-since this is more of a practical thing.}
-We consider multi-core CPUs with multiple levels of cache;
-This includes most modern CPUs, both desktop computers and laptops,
-as well as mobile devices such as smartphones and tablets.
-The first cache level, L1, is usually only used by one core,
-while the remaining levels, L2 (and maybe L3), are shared.
-This means that when a program is writing to memory,
-the same logical memory may be present in multiple
-physical locations on the CPU, which causes synchronization
-problems when this memory is written to. This is the
+\note{reconsider having hardware and software sections.  Maybe it's better to
+just have one?} \note{hardware ordering. Atomic operations (CAS, FA, etc.),
+notes on other futuristic atomic operations} \note{We should focus on the
+things that are currently supported in hardware, since this is more of a
+practical thing.} We consider multi-core CPUs with multiple levels of cache;
+This includes most modern CPUs, both desktop computers and laptops, as well as
+mobile devices such as smartphones and tablets.  The first cache level, L1, is
+usually only used by one core, while the remaining levels, L2 (and maybe L3),
+are shared.  This means that when a program is writing to memory, the same
+logical memory may be present in multiple physical locations on the CPU, which
+causes synchronization problems when this memory is written to. This is the
 problem of \emph{cache coherence}.
 
 \note{???}
-We would like our programs to be sequentially consistent.
-However, we also want our hardware to be performant, and it
-turns out that these two requirements are conflicting, and we have
-chosen the latter.
+We would like our programs to be sequentially consistent.  However, we also
+want our hardware to be performant, and it turns out that these two
+requirements are conflicting, and we have chosen the latter.
 
 
-\todo{could probably make this better: memory models isn't all about reordering.}
-Different CPU architectures have different memory models, which dicates
-how much the CPU is allowed to reorder reads and writes without brekaing
-the semantics of the program when ran sequentially.
-For this reason, arcitechtures have constructs for saying ``do not move memory operations
-across this line'', called \emph{memory fences} or \emph{barriers}.
-x86 have a rahter strong memory model, meaning the CPU is very limited
-in its ability to reorder. For instance, x86 forbids reads to be reordered
-with other reads, and writes with other writes. It also forbids any reordering
-with locked instructions; this is very strict, as the preferred instruction used
-for sequential consistent atomic store is a locked instruction, meaning
-atomic stores are full fences.
-ARM on the other hand, have a comparably weak memory model. A disadvantage of this
-is that sequentially consitent atomics require full fences for both loads and stores,
-since they are allowed to be reordered.
-ARMv8 fixes this by having explicit instructions for SC load and store.
-For more information on x86, see Chapter 8.2.2 in~\cite{intel64};
-for information about ARMv7 and ARMv8 see \todo{sources}.
+\todo{could probably make this better: memory models isn't all about
+reordering.} Different CPU architectures have different memory models, which
+dicates how much the CPU is allowed to reorder reads and writes without
+brekaing the semantics of the program when ran sequentially.  For this reason,
+arcitechtures have constructs for saying ``do not move memory operations across
+this line'', called \emph{memory fences} or \emph{barriers}.  x86 have a rahter
+strong memory model, meaning the CPU is very limited in its ability to reorder.
+For instance, x86 forbids reads to be reordered with other reads, and writes
+with other writes. It also forbids any reordering with locked instructions;
+this is very strict, as the preferred instruction used for sequential
+consistent atomic store is a locked instruction, meaning atomic stores are full
+fences.  ARM on the other hand, have a comparably weak memory model. A
+disadvantage of this is that sequentially consitent atomics require full fences
+for both loads and stores, since they are allowed to be reordered.  ARMv8 fixes
+this by having explicit instructions for SC load and store.  For more
+information on x86, see Chapter 8.2.2 in~\cite{intel64}; for information about
+ARMv7 and ARMv8 see \todo{sources}.
 
 
 \note{We should maybe move the Rust section to before this, so we can use
-\code{std::sync::atomic::Ordering}}.
-The C11 memory model (\note{from where is this actually?}) defined five memory orderings:
-Acquire, Release, Acquire+Release, Sequentially Consistent, Relaxed, and
-\note{some more? note about unused thing?},
-Relaxed is the weakest, with no ordering constraints,
-\todo{rather write this in terms of exact semantics,
-eg. that previous writes must be visible}
-Acquire forbids subsequent operations to be moved before the operation,
-Release forbids previous operations to be moved after the operation,
-and Sequentially Consistent forbids both.
-Acquire+Release is Acquire if the operation is a load,
-and Release if it is a store.
-A way to remember the acquire and release orderings is that they
-hold the semantics of a lock, where we acquire and release the lock:
-memory operations inside the critical section is not allowed to be
-moved out on either side.
-When reasoning about the orderings however, it is better to think in terms of the semantics,
+\code{std::sync::atomic::Ordering}}.  The C11 memory model (\note{from where is
+this actually?}) defined five memory orderings: Acquire, Release,
+Acquire+Release, Sequentially Consistent, Relaxed, and \note{some more? note
+about unused thing?}, Relaxed is the weakest, with no ordering constraints,
+\todo{rather write this in terms of exact semantics, eg. that previous writes
+must be visible} Acquire forbids subsequent operations to be moved before the
+operation, Release forbids previous operations to be moved after the operation,
+and Sequentially Consistent forbids both.  Acquire+Release is Acquire if the
+operation is a load, and Release if it is a store.  A way to remember the
+acquire and release orderings is that they hold the semantics of a lock, where
+we acquire and release the lock: memory operations inside the critical section
+is not allowed to be moved out on either side.  When reasoning about the
+orderings however, it is better to think in terms of the semantics,
 \todo{balblabla}
 
-\note{Maybe we will not use other orderings than SeqCst for anything, for simplicity?
-Tiem etc. Also, ``Hans Boehm'' warns that it is very hard to get right, and that
-it is probably not possible to hide the choices of orderings from clients of libraries.
-We could write a paragraph here explaining what it's about, and then just say ``we will
-stick with \code{SeqCst}.''?}
+\note{Maybe we will not use other orderings than SeqCst for anything, for
+simplicity?  Tiem etc. Also, ``Hans Boehm'' warns that it is very hard to get
+right, and that it is probably not possible to hide the choices of orderings
+from clients of libraries.  We could write a paragraph here explaining what
+it's about, and then just say ``we will stick with \code{SeqCst}.''?}
 
 
 
@@ -332,27 +306,26 @@ stick with \code{SeqCst}.''?}
 
 
 \section{Parallelism in Software}
-\note{Hardware works such and such, but how does programmers handle these things?
-Mention \code{volatile}? Look at instructions?
-Many programmers does not think about cache problems. What about
-concurrency problems? May they also be ignored? (no)}
+\note{Hardware works such and such, but how does programmers handle these
+things?  Mention \code{volatile}? Look at instructions?  Many programmers does
+not think about cache problems. What about concurrency problems? May they also
+be ignored? (no)}
 
 Modern compilers \emph{and CPUs} reorder instructions when it improves
-performance if they can prove that the end result is the same.
-In sequential code there is no way to notice the difference.
-Consider Listing~\ref{lst:reordering}, and assume variables
-are initialized to 0.
+performance if they can prove that the end result is the same.  In sequential
+code there is no way to notice the difference.  Consider
+Listing~\ref{lst:reordering}, and assume variables are initialized to 0.
 \begin{lstlisting}[caption=Instruction reordering,label=lst:reordering]
 // Thread A                     // Thread B
 while (f == 0)                  x = 1
   ;                             f = 1
 print(x)
 \end{lstlisting}
-When ran sequentially (alternating between the two), we would observe
-no difference if the assignments were reordered. However, when run
-concurrently thread B might decide to assign \code{f = 1} first,
-and thread A will risk printing \code{0} instead of \code{1},
-which was the only case in the sequential world.
+When ran sequentially (alternating between the two), we would observe no
+difference if the assignments were reordered. However, when run concurrently
+thread B might decide to assign \code{f = 1} first, and thread A will risk
+printing \code{0} instead of \code{1}, which was the only case in the
+sequential world.
 
 We can fix this problem by using a fence.
 
@@ -362,27 +335,26 @@ We can fix this problem by using a fence.
 \note{What is memory reclamation? Why is it hard? What approaches are there?}
 \note{Assumed background: had OS, have programmed in C or C++.}
 
-When programming we lend memory from the operating system. This memory must be returned, or else
-we will sooner or later run out of it.
-In most modern programming languages, this is a feature provided by the runtime of the language.
-We call such languages \emph{managed languages}.
-However, in languages such as Rust, there is virtually no runtime, so this becomes a concern
-of the programmer.
-Garbage colleciton is typically the name used for memory reclamation;
-if we want to pedantic we would say a garbage collector performs memory reclamation.
+When programming we lend memory from the operating system. This memory must be
+returned, or else we will sooner or later run out of it.  In most modern
+programming languages, this is a feature provided by the runtime of the
+language.  We call such languages \emph{managed languages}.  However, in
+languages such as Rust, there is virtually no runtime, so this becomes a
+concern of the programmer.  Garbage colleciton is typically the name used for
+memory reclamation; if we want to pedantic we would say a garbage collector
+performs memory reclamation.
 
-In a concurrent setting, we are concerned about the properties of our data structures,
-\todo{define this}
-such as wait-freedom, or lock-freedom.
-\todo{rewrite this sentence}
-One can make the claim that data structures implemented in managed languages can never
-obtain some of these properties, since they depend on the runtime to get execution time
-in order for the program to be able to allocate memory.
-Hence, the runtime thread has to get CPU time in order for the program to make progress.
-\note{Could say this better; the point is to motivate the usage of Rust.}
+In a concurrent setting, we are concerned about the properties of our data
+structures, \todo{define this} such as wait-freedom, or lock-freedom.
+\todo{rewrite this sentence} One can make the claim that data structures
+implemented in managed languages can never obtain some of these properties,
+since they depend on the runtime to get execution time in order for the program
+to be able to allocate memory.  Hence, the runtime thread has to get CPU time
+in order for the program to make progress.  \note{Could say this better; the
+point is to motivate the usage of Rust.}
 
-The field of concurrent memory reclamation is an active one, and a lot of different schemes
-have emerged the recent years. We will look at
+The field of concurrent memory reclamation is an active one, and a lot of
+different schemes have emerged the recent years. We will look at
 \emph{Reference Counting} (RC),
 \emph{Epoch Based Reclamation} (EBR),
 \emph{Hazard Pointers} (HP),
@@ -395,19 +367,19 @@ have emerged the recent years. We will look at
 \todo{this}
 Simple, "obvious" solution. But does it work?
 
-\todo{split into two paragraphs? Eventually move history part to bottom, Knuth style}
-The idea of reference counting is that we count the number of references to data,
-so that we can tell if we are holding the only reference to some data.
-When we no longer need this reference, we know it is safe to reclaim the memory
-the reference points to, since no other reference to that memory exists.
-Reference counting first appeared in 1960 by G. E. Collins\cite{collins1960method},
-where it was used for collecting nodes of a linked list.
-The primary downsides of RC is that it is rather expensive, and that a na\"\i{}ve
-implementation does not reclaim cycles.
-Today reference counting is still used, although not in the setting of general
-memory reclamation. \todo{source?}
-\note{Want to say that while RC isn't used in GC, it is used for other things, like
-\code{std::rc::Rc} stuff. Also \code{Arc}, even more expensive}.
+\todo{split into two paragraphs? Eventually move history part to bottom, Knuth
+style} The idea of reference counting is that we count the number of references
+to data, so that we can tell if we are holding the only reference to some
+data.  When we no longer need this reference, we know it is safe to reclaim the
+memory the reference points to, since no other reference to that memory
+exists.  Reference counting first appeared in 1960 by G. E.
+Collins\cite{collins1960method}, where it was used for collecting nodes of a
+linked list.  The primary downsides of RC is that it is rather expensive, and
+that a na\"\i{}ve implementation does not reclaim cycles.  Today reference
+counting is still used, although not in the setting of general memory
+reclamation. \todo{source?} \note{Want to say that while RC isn't used in GC,
+it is used for other things, like \code{std::rc::Rc} stuff. Also \code{Arc},
+even more expensive}.
 
 % TODO: Use this for node drawing, when needed.
 %
@@ -429,23 +401,21 @@ memory reclamation. \todo{source?}
 %   \caption{Data nodes using RC}
 % \end{figure}
 
-\todo{Consider adding a code listing instead of using words}
-Reference counting is a natural approach to the problem of concurrent memory reclamation.
-The first observation to make is that we need to use atomic reads and writes
-to correctly increment and decrement the reference count. However,
-the na\"\i{}ve implementation is not correct.
-Consider two threads operating on some \code{RC<T>}.
-When thread A want to create a new reference to the data, it increments the count in
-the \code{RC} object. Upon destruction, the count is decremented
-and the data is freed if the count is 0.
-However, it is possible that thread B has a reference to the RC object
-and that it got preempted right before incrementing the count.
-Then the whole object gets freed by thread A, since the count is 0,
-and when thread B gets execution time again, it has a pointer to freed memory
-which it indents to read.
-It is worth noting that we can free the \emph{data} using this scheme, but not
-the entire \code{RC} node, since the \code{count} field may be set to a special
-value indicating that its data is freed.
+\todo{Consider adding a code listing instead of using words} Reference counting
+is a natural approach to the problem of concurrent memory reclamation.  The
+first observation to make is that we need to use atomic reads and writes to
+correctly increment and decrement the reference count. However, the na\"\i{}ve
+implementation is not correct.  Consider two threads operating on some
+\code{RC<T>}.  When thread A want to create a new reference to the data, it
+increments the count in the \code{RC} object. Upon destruction, the count is
+decremented and the data is freed if the count is 0.  However, it is possible
+that thread B has a reference to the RC object and that it got preempted right
+before incrementing the count.  Then the whole object gets freed by thread A,
+since the count is 0, and when thread B gets execution time again, it has a
+pointer to freed memory which it indents to read.  It is worth noting that we
+can free the \emph{data} using this scheme, but not the entire \code{RC} node,
+since the \code{count} field may be set to a special value indicating that its
+data is freed.
 
 \note{Add note on differential RC:\@
 http://www.1024cores.net/home/lock-free-algorithms/object-life-time-management/differential-reference-counting}
@@ -467,48 +437,43 @@ http://www.1024cores.net/home/lock-free-algorithms/object-life-time-management/d
 % \end{lstlisting}
 
 \section{Epoch Based Reclamation}
-Epoch Based Reclamation (EBR) was introduced by Fraser in~\cite{fraser2004practical}.
-It is a reclamation scheme based on the observation that most programs have no
-references to data structure memory in between of operations on the structure.
-The time interval in between operations on the data structure are therefore
-safepoints (also called grace periods) for memory reclamation to occur.
-\todo{add something more here}
+Epoch Based Reclamation (EBR) was introduced by Fraser
+in~\cite{fraser2004practical}.  It is a reclamation scheme based on the
+observation that most programs have no references to data structure memory in
+between of operations on the structure.  The time interval in between
+operations on the data structure are therefore safepoints (also called grace
+periods) for memory reclamation to occur.  \todo{add something more here}
 
-EBR uses the concept of an \emph{epoch}, a global timestamp which we
-use to find out when it is safe to reclaim retired memory.
-The epoch is a global counter.
-In addition we have a global list with one entry for each running thread,
-which the thread uses for registering the last epoch they read, as well as
-whether they are currently performing an operation.
-We call a thread performing an operation \emph{pinned}, and the action of
-marking and unmarking \emph{pinning} and \emph{unpinning} the thread.
+EBR uses the concept of an \emph{epoch}, a global timestamp which we use to
+find out when it is safe to reclaim retired memory.  The epoch is a global
+counter.  In addition we have a global list with one entry for each running
+thread, which the thread uses for registering the last epoch they read, as well
+as whether they are currently performing an operation.  We call a thread
+performing an operation \emph{pinned}, and the action of marking and unmarking
+\emph{pinning} and \emph{unpinning} the thread.
 
-When starting an operation a thread reads the global epoch and saves it
-in its entry, and pins the thread.
-Upon retiering memory the thread marks the memory with the global epoch
-and puts it in a \emph{limbo list} \note{replace with the
-three lists instead of marking?}.
-Every once in a while, the threads try to increment the epoch.
-The epoch can only be incremented if all pinned threads
-have seen the current epoch. This way we know that all threads
-with references to memory which may be freed by the data structure
-is either in the current epoch, or in the previous epoch.
-Lastly, after incrementing an epoch to $e$ we know that garbage that
-was added in epoch $e-2$ is safe to be freed.
-\note{Should clairfy here. Note that the potential counter example
-is A a wants to delete X, B incs epoch and reads X,
-A deletes X, and incs epoch. But, now X is marked with e+1,
-even though A was in e, since we're reading the global epoch on delete.}
+When starting an operation a thread reads the global epoch and saves it in its
+entry, and pins the thread.  Upon retiering memory the thread marks the memory
+with the global epoch and puts it in a \emph{limbo list} \note{replace with the
+three lists instead of marking?}.  Every once in a while, the threads try to
+increment the epoch.  The epoch can only be incremented if all pinned threads
+have seen the current epoch. This way we know that all threads with references
+to memory which may be freed by the data structure is either in the current
+epoch, or in the previous epoch.  Lastly, after incrementing an epoch to $e$ we
+know that garbage that was added in epoch $e-2$ is safe to be freed.
+\note{Should clairfy here. Note that the potential counter example is A a wants
+to delete X, B incs epoch and reads X, A deletes X, and incs epoch. But, now X
+is marked with e+1, even though A was in e, since we're reading the global
+epoch on delete.}
 
 \note{Add example from comere?}
 
-There are still a few challenges with EBR.
-A problem is that we are not allowed to keep references to data across operations,
-since the thread must be pinned while we are using the references.
-A natural way to mitigate this constraint is to leave the thread pinned.
-However, this will stop the advancement of the global epoch, and thus effectively
-halting the memory reclamation.
-An immediate consequence of this is that EBR is not lock-free.
+There are still a few challenges with EBR.  A problem is that we are not
+allowed to keep references to data across operations, since the thread must be
+pinned while we are using the references.  A natural way to mitigate this
+constraint is to leave the thread pinned.  However, this will stop the
+advancement of the global epoch, and thus effectively halting the memory
+reclamation.  An immediate consequence of this is that EBR is not lock-free.
 \note{Limits/challenges of EBR. Add more.}
 
 \todo{Add proof? Pseudocode of stuff?}
@@ -516,33 +481,31 @@ An immediate consequence of this is that EBR is not lock-free.
 
 \section{Hazard Pointers}
 
-Hazard pointers was introduced by Michael in~\cite{michael2004hazard}.
-It is based on the observation that in most operations on data structure
-we only need a small constant number of references to memory that is shared
-between running threads. The technique exploits this by allowing each
-thread to reigster the pointers, called \emph{hazard pointers},
-the thread wants to use, but which it cannot be sure are valid.
-For instance, the $next$ pointers in a linked list would be registered
-as hazardous, as they might point to memory that is already removed from the list.
-By registering the pointers that are hazardous, other threads can refrain from
-changing the referenced data.
-As with RC we there are some compilcations here: the thread might be preempted
-after reading the hazardous pointer, but before registering it as hazardous.
-The number of pointers we need varies with the algorithms performed,
-but a typical value is one or two.
+Hazard pointers was introduced by Michael in~\cite{michael2004hazard}.  It is
+based on the observation that in most operations on data structure we only need
+a small constant number of references to memory that is shared between running
+threads. The technique exploits this by allowing each thread to reigster the
+pointers, called \emph{hazard pointers}, the thread wants to use, but which it
+cannot be sure are valid.  For instance, the $next$ pointers in a linked list
+would be registered as hazardous, as they might point to memory that is already
+removed from the list.  By registering the pointers that are hazardous, other
+threads can refrain from changing the referenced data.  As with RC we there are
+some compilcations here: the thread might be preempted after reading the
+hazardous pointer, but before registering it as hazardous.  The number of
+pointers we need varies with the algorithms performed, but a typical value is
+one or two.
 
-\note{This is somewhat backwards: we have already looked at HP informally.}
-The paper by Michael formalizes hazardous pointers, and includes a proof
-of correctness. We will settle for a informal view of them.
-A challenge in usage of HP is that we need to identify which pointers
-in our algorithms are hazardous. In comparison, we have no such concerns in EBR, in
-which we only need to register memory as garbage when we remove it from the
-data structure (we do need to make sure that this memory is only registered
-by a single thread).
-This imposes the choice of memory reclamation onto the programmer of
-the data structures using them. In other words, it is unlikely that
-HP can be used ``transparently'', in the sense that we can seamlessly
-change between, say, HP and EBR\@.
+\note{This is somewhat backwards: we have already looked at HP informally.} The
+paper by Michael formalizes hazardous pointers, and includes a proof of
+correctness. We will settle for a informal view of them.  A challenge in usage
+of HP is that we need to identify which pointers in our algorithms are
+hazardous. In comparison, we have no such concerns in EBR, in which we only
+need to register memory as garbage when we remove it from the data structure
+(we do need to make sure that this memory is only registered by a single
+thread).  This imposes the choice of memory reclamation onto the programmer of
+the data structures using them. In other words, it is unlikely that HP can be
+used ``transparently'', in the sense that we can seamlessly change between,
+say, HP and EBR\@.
 
 
 \todo{Revisit RC here, with the stuff from the blog?
@@ -558,11 +521,12 @@ but it would be nice to have them in the report}
 Whys. Also implementation problems, testing techniques, profiling setup etc.}
 
 \section{Implementation}
-There is often a disconnect between the idea of a system and the implementation of that system.
-Algorithms are usually explained at such a high level that a straight forward implementation
-in a given language is either impossible, impractical, or leads to atypical code.
-Programming is more craft than science, so when implementing a system we must reconsider
-the system in the context of the language we are using.
+There is often a disconnect between the idea of a system and the implementation
+of that system.  Algorithms are usually explained at such a high level that a
+straight forward implementation in a given language is either impossible,
+impractical, or leads to atypical code.  Programming is more craft than
+science, so when implementing a system we must reconsider the system in the
+context of the language we are using.
 
 
 \subsection{Atomics}
@@ -584,11 +548,10 @@ the system in the context of the language we are using.
 \note{How did we implement hp? Tradeoffs}
 
 \section{Verification}
-Programming concurrent sytems is hard.
-Verifying \emph{any} system is also hard.
-Therefore, we are lead to belive that verifying a concurrent system is \emph{very} hard.
-This seems to be the case.
-\note{this is probably too dumd and ``funny''}.
+Programming concurrent sytems is hard.  Verifying \emph{any} system is also
+hard.  Therefore, we are lead to belive that verifying a concurrent system is
+\emph{very} hard.  This seems to be the case.  \note{this is probably too dumd
+and ``funny''}.
 
 \section{Profiling}
 \note{How do we benchmark?}
@@ -596,9 +559,8 @@ This seems to be the case.
 
 
 \chapter{Results}
-\note{What did we run? Plot some graphs. What did we find out?
-Which scheme is better for which application?
-Runtime, power usage, etc.}
+\note{What did we run? Plot some graphs. What did we find out?  Which scheme is
+better for which application?  Runtime, power usage, etc.}
 
 
 \chapter{Discussion}
