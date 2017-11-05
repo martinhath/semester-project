@@ -1,4 +1,4 @@
-\documentclass[b5paper,twoside]{report}
+\documentclass[a4paper,twoside]{report}
 
 \usepackage[toc]{appendix}
 \usepackage{listings}
@@ -223,10 +223,16 @@ possible to leak a value by not running its destructor, by using the
 \code{std::mem::forget} function, or to explicitly run the destrutor of a
 value, by calling \code{std::mem::drop}.
 
+The Rust standard library also have \emph{smart pointers}, including reference
+counted pointers (\code{std::rc::Rc}), and an \emph{atomic} version
+(\code{std::sync::Arc}). \code{Rc} uses a non-atomic counter, and is hence not
+safe to share among threads, since it could induce a race condition.
 Rust also have \emph{raw pointers}, which behaves like regular pointers in C
 and C++.  Copying and creating raw pointers are safe operations, but reading a
 raw pointer is \code{unsafe}, as there are no guarantee on the memory we are
 reading.
+
+
 
 \todo{raw pointers, safe abstractions, some other things.}
 
@@ -277,30 +283,6 @@ information on x86, see Chapter 8.2.2 in~\cite{intel64}; for information about
 ARMv7 and ARMv8 see \todo{sources}.
 
 
-\note{We should maybe move the Rust section to before this, so we can use
-\code{std::sync::atomic::Ordering}}.  The C11 memory model (\note{from where is
-this actually?}) defined five memory orderings: Acquire, Release,
-Acquire+Release, Sequentially Consistent, Relaxed, and \note{some more? note
-about unused thing?}, Relaxed is the weakest, with no ordering constraints,
-\todo{rather write this in terms of exact semantics, eg. that previous writes
-must be visible} Acquire forbids subsequent operations to be moved before the
-operation, Release forbids previous operations to be moved after the operation,
-and Sequentially Consistent forbids both.  Acquire+Release is Acquire if the
-operation is a load, and Release if it is a store.  A way to remember the
-acquire and release orderings is that they hold the semantics of a lock, where
-we acquire and release the lock: memory operations inside the critical section
-is not allowed to be moved out on either side.  When reasoning about the
-orderings however, it is better to think in terms of the semantics,
-\todo{balblabla}
-
-\note{Maybe we will not use other orderings than SeqCst for anything, for
-simplicity?  Tiem etc. Also, ``Hans Boehm'' warns that it is very hard to get
-right, and that it is probably not possible to hide the choices of orderings
-from clients of libraries.  We could write a paragraph here explaining what
-it's about, and then just say ``we will stick with \code{SeqCst}.''?}
-
-
-
 \note{blabalba}
 
 
@@ -311,7 +293,32 @@ things?  Mention \code{volatile}? Look at instructions?  Many programmers does
 not think about cache problems. What about concurrency problems? May they also
 be ignored? (no)}
 
-Modern compilers \emph{and CPUs} reorder instructions when it improves
+Rust uses the same memory model as LLVM, which is inspired by the C++11 memory
+model~\cite{llvmmm}. LLVM also defines the memory ordering constraint types that
+Rust uses. We will use the memory orderings as defined in
+\code{sync::atomic::Ordering}~\cite{rust-ordering}. There are five variants:
+\code{Relaxed}, \code{Release}, \code{Acquire}, \code{AcqRel}, and
+\code{SeqCst}, \code{Relaxed} is the weakest and offers no ordering
+constrants.  Atomic operations with this ordering differs only from regular
+operations in that the operation is happening instantaneously.
+\code{Acquire} and \code{Release} are intended to work in pairs, by loading with
+\code{Acquire} and storing with \code{Release} in the same memory location.
+\code{Acquire} ensures that data written in between it and a \code{Release}
+store on the same memory address is visible to other threads. This is typically
+used to implement a lock, where we \code{Acquire} the lock before the critical
+section, and \code{Release} the lock after it. Now the operations inside the
+critical section are not allowed to be reordered out of it.
+\code{AcqRel} is the \code{Release} ordering when used with a store, and
+\code{Acquire} when used with a load. \code{SeqCst} is \code{AcqRel}, but it
+also guarantees that all threads see all SC operations is the same order.
+\note{Maybe we will not use other orderings than SeqCst for anything, for
+simplicity?  Tiem etc. Also, ``Hans Boehm'' warns that it is very hard to get
+right, and that it is probably not possible to hide the choices of orderings
+from clients of libraries.  We could write a paragraph here explaining what
+it's about, and then just say ``we will stick with \code{SeqCst}.''?}
+
+
+Modern compilers and CPUs reorder instructions when it improves
 performance if they can prove that the end result is the same.  In sequential
 code there is no way to notice the difference.  Consider
 Listing~\ref{lst:reordering}, and assume variables are initialized to 0.
@@ -327,7 +334,29 @@ thread B might decide to assign \code{f = 1} first, and thread A will risk
 printing \code{0} instead of \code{1}, which was the only case in the
 sequential world.
 
-We can fix this problem by using a fence.
+A solution to this problem is to use a memory fence, in order to explicitly
+disallow any reordering past it, as in Listing~\ref{lst:mem-fence}.
+
+\begin{lstlisting}[caption=Memory fence for synchronization,label=lst:mem-fence]
+// Thread A                     // Thread B
+while (f == 0)                  x = 1
+  ;                             fence()
+fence()                         f = 1
+print(x)
+\end{lstlisting}
+However, fences are expensive. We would rather want to just make sure that
+there is an ordering relationship between \code{f} and \code{x}. We can obtain
+this by using \code{Acquire} and \code{Release} semantics on \code{f}, like in
+Listing~\ref{lst:acqrel}. The \code{Release} in Thread B ensures that the
+assignment \code{x =1 } is not moved after the store to \code{f}, and the
+\code{Acquire} load in Thread A ensures that the access to \code{x} is not moved
+above the load of \code{f}. This gives us the desired semantics.
+\begin{lstlisting}[caption=Synchronization using orderings,label=lst:acqrel]
+// Thread A                     // Thread B
+while (f.load(Acquire) == 0)    x = 1
+  ;                             f.store(1, Release)
+print(x)
+\end{lstlisting}
 
 
 
