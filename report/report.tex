@@ -552,7 +552,7 @@ structure (we do need to make sure that this memory is only registered by a
 single thread).  This imposes the choice of memory reclamation onto the
 programmer of the data structures using them. In other words, it is unlikely
 that HP can be used ``transparently'', in the sense that we can seamlessly
-change between, say, HP and EBR\@.  
+change between, say, HP and EBR\@.
 
 \todo{Revisit RC here, with the stuff from the blog?
 Or maybe its better to just put it at the end of the subsection.}
@@ -626,7 +626,7 @@ What alternatives exists?}
   A major part of Rust's ecosystem is \url{https://crates.io}, the package repository
   for Rust. This is where packages handled by \cargo{} is downloaded from, by default.
 
-  \section*{Hello World}
+  \section{Hello World}
   We show how to install the Rust toolchain on a Unix based system.
   Installing \rustup{} is done by downloading and running an install script from
   \url{https://rustup.rs}:
@@ -678,8 +678,85 @@ Hello, world!
   Cargo supports a project to build multiple executables, or no executables at all.
   For more information about cargo see~\url{http://doc.crates.io/index.html}.
 
+  \section{\code{\#[test]} and \code{\#[bench]}}
+  The Rust toolchain supports both testing and benchmarking. To write tests we
+  make an inline module named \code{test}, and conditionally compile it using
+  \code{\#[cfg(test)]}. This makes the code to be ignored unless we are running
+  the tests; this is done with \code{cargo test}. Listing~\ref{lst:cargo-test}
+  shows an example test on a \code{Queue}. This is usually put in the same file
+  at the \code{Queue} but this is only by convention, and not required.
 
-  \section*{Setup for cross-compilation}
+  \begin{figure}[ht!]
+  \begin{lstlisting}[label=lst:cargo-test,caption=An example test in Rust]
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn queue() {
+        let mut queue = Queue::new();
+        queue.push(1);
+        queue.push(2);
+        assert_eq!(queue.pop(), Some(1));
+        assert_eq!(queue.pop(), Some(2));
+    }
+}
+    \end{lstlisting}
+  \end{figure}
+  The output of \code{cargo test} might look like
+  Listing~\ref{lst:cargo-test-output}.
+  \begin{figure}[ht!]
+    \begin{lstlisting}[label=lst:cargo-test-output,caption=Sample output of
+    \code{cargo test},language=,numbers=none]
+running 47 tests
+test ebr::atomic::tests::valid_tag_i8 ... ok
+test ebr::atomic::tests::valid_tag_i64 ... ok
+test ebr::bench::pin ... ok
+test ebr::queue::bench::push ... ok
+test ebr::queue::test::can_construct_queue ... ok
+test ebr::queue::test::is_unique_receiver ... ok
+    \end{lstlisting}
+  \end{figure}
+
+  Benchmarking is similar, except that we do not have a conditional compilation
+  flag for benchmarks. For similarity, we can put benchmarks in the \code{bench}
+  module. Benchmarks are annotated with \code{\#[bench]}. The benchmarks are ran
+  with \code{cargo bench}, which runs all benchmark annotated functions.
+  Listing~\ref{lst:bench-test} shows a sample benchmark, and
+  Listing~\ref{lst:bench-test-output} shows sample output from a benchmark.
+  Note that the benchmark system is not in stable Rust, so we need to use the
+  nightly version. The code that is benchmarked is the closure passed to
+  \code{test::Bencher::iter}.
+  \begin{figure}[ht!]
+  \begin{lstlisting}[label=lst:bench-test,caption=An example benchmark in Rust]
+mod bench {
+    extern crate test;
+    use super::Queue;
+    #[bench]
+    fn push(b: &mut test::Bencher) {
+        let q = Queue::new();
+        b.iter(|| {
+            ::ebr::pin(|pin| {
+                q.push(1, pin);
+            });
+        });
+    }
+}
+    \end{lstlisting}
+  \end{figure}
+  \begin{figure}[ht!]
+    \begin{lstlisting}[label=lst:bench-test-output,caption=Sample output of
+    \code{cargo bench},language=,numbers=none,basicstyle=\footnotesize]
+test ebr::bench::pin               ... bench:   18 ns/iter (+/- 0)
+test ebr::queue::bench::push       ... bench:   57 ns/iter (+/- 12)
+test hp::list::bench::remove_front ... bench:    2 ns/iter (+/- 0)
+    \end{lstlisting}
+  \end{figure}
+
+
+
+
+
+  \section{Setup for cross-compilation}
   Other targets may be installed through \rustup{}. For instance, if we want to
   make \code{aarch64-unknown-linux-gnu} available for cross-compilation we would run
   \begin{lstlisting}[language=Bash,numbers=none]
