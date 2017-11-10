@@ -609,6 +609,12 @@ as the signatures for the public functions are listed in
 Listing~\ref{lst:msqueue}. The implementation of \code{push} and \code{pop} is
 heavily inspired of the implementation from Crossbeam\cite{crossbeam-msqueue}.
 We support \code{pop\_if}, since we use this in the implementation of EBR.
+\code{push} allocates the memory needed for the node, which in microbenchmarks
+have been shown to take the majority of the time: allocation averaged at 54ns,
+while the rest of the procedure averaged at 30ns.  A natural optimization of
+this problem is to allocate nodes from a memory arena or similar, such that the
+allocation overhead is amortized over multiple calls to \code{push}. However,
+this seriously increses the complexity of the memory management schemes.
 
 \begin{figure}[ht]
 \begin{lstlisting}[caption=Structs for the Michael-Scott
@@ -645,7 +651,6 @@ The list we have implemented is based on the list presented
 by Michael in~\cite{michael2002high}.
 
 \subsection{Epoch Based Reclamation}
-\note{How did we implement ebr? Trade-offs}
 
 In implementing EBR we used a third-party crate, \code{lazy\_static}, which
 contains a macro for lazy-initialized static variables. We use this for the
@@ -670,14 +675,45 @@ that the closure needs to be heap allocated, which increases the overhead of
 adding garbage.
 \todo{implmeent tags or something, and profile?}
 
+When using the collections backed by EBR, the user must first obtain a
+\code{Pin}, which is a proof that the current thread is pinned. All operations on
+the collections requires a pin, such that we know that the memory read is not
+yet freed. There is no way to obtain the pin directly --- users must call the
+\code{pin} function, and supply a closure which is given the pin as an argument.
+This design decision is made in order to make it nearly impossible for users to
+grab a pin and keep it for a long amount of time, as this will effectively stop
+the memory reclamation. Having a closure also makes it very clear when the
+thread stops being pinned.
+
+The \code{pin} function is also where we reclaim the memory. Before calling the
+closure passed in, we read the global epoch, and increment our local pin
+counter. Every $n$ call to \code{pin}, we try to increment the epoch.
+If we succeed at incrementing the epoch we also free as much garbage as allowed
+from the global garbage list. This scheme is in a sense fair, in that threads
+that pin a lot supposedly create a lot of garbage, and these threads will also
+have to clean up once in a while. It does however suffer from the fact that a
+single thread is set to clean up all the garbage from other threads.
+\todo{As i'm writing this, I realize that this is a terrible idea. Should fix.}
+
+The thread entry list is a potential memory problem; each thread makes an entry
+the first time \code{pin} is called, and this entry is never removed. Thus, if
+the system keeps creating threads which crashes right after calling \code{pin},
+the list will quickly grow, and its elements will never be removed. This problem
+can be mitigated by removing the entry from the list if the thread shuts down
+gracefully; however there is still the problem of crashing threads. One solution
+could be to mark the entries with a timestamp, and remove entries that have been
+inactive for too long, as well as to set the threads thread local pointer to
+\code{null}. Neither of these two solutions have been implemented, as this is
+mainly a theoretical problem.
+
 We note that both the entry list and garbage queue themselves must be garbage
-collected, and that we use EBR itself on them. This poses a problem: for each
+collected, and that we use EBR on them. This poses a problem: for each
 garbage in the list, we need a node. However, that node itself will be garbage
 when it is popped from the list, so we need to push it into the garbage list,
 which makes a node, etc. Our solution to this is to chunk up garbage in chunks
 of a constant size, using the \code{Bag} struct. Thus the garbage queue is a
 \code{ebr::queue::Queue<Bag>}. The chunking is done thread locally, which also
-lowers synchronization overhead, since less elements are shared between threads.
+lowers synchronization overhead, since fewer elements are shared between threads.
 
 
 \subsection{Hazard Pointers}
