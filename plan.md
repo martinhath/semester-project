@@ -77,8 +77,8 @@ Tasks which are in **bold** are required for the MVP.
 | Reclamation Scheme | Queue | List | SkipList | HashMap (?) |
 | --- | --- | --- | --- | --- |
 |No memory reclamation | **yes** | **yes** | no | no |
-|EBR |  **yes** | **no** | no | no |
-|Hazard Pointers |  **no** | **no** | no | no |
+|EBR |  **yes** | **yes** | no | no |
+|Hazard Pointers |  **yes** | **yes** | no | no |
 | `crossbeam-epoch` | **yes** | **yes** | no | no |
 |Some thing based on RC |  no | no | no | no |
 |Optimistic Access (Cohen&Petrank) |  no | no | no | no |

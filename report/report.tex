@@ -652,72 +652,123 @@ by Michael in~\cite{michael2002high}.
 
 \subsection{Epoch Based Reclamation}
 
-In implementing EBR we used a third-party crate, \code{lazy\_static}, which
-contains a macro for lazy-initialized static variables. We use this for the
-epoch counter, which is an \code{AtomicUsize}. The global list of thread
-entries, as well as a queue of ``to-be freed'' garbage is also stored globally.
-These three elements are stored in a struct called \code{GlobalState}.
-Thread local state is supported by Rust using the \code{thread\_local!} macro.
-The thread local data is a pointer to the threads list entry, a counter of how
-many times the thread has been pinned, and buffered garbage. The data is put
-together in the struct \code{LocalState}.
+Our implementation of EBR has both global state and thread local state. The data
+in the global state contains three things: the epoch, which is an
+\code{AtomicUsize}; a queue of retired garbage, which are tuples of pointers to
+memory that we want to free and the epoch when the memory was retired; and a
+list of thread markers, \code{List<ThreadMarker>}. This is all stored in the
+\code{GlobalState} struct. We use the third-party crate \code{lazy\_static}
+which contains a macro for lazy-initialized static variables.  The thread local
+data is stored in the \code{LocalState} struct, and is initalized using the
+\code{thread\_local!} macro, which is in the Rust standard library. The thread
+local data is a pointer to the threads list entry, a counter of how many times
+the thread has been pinned, and buffered garbage.
 
-Memory we want to free is hidden behind the \code{Garbage} struct. This struct
-abstracts away the logic of calling the right destructor. This is needed since
-\code{LocalState::\ add\_garbage} takes an \code{Owned<T>}, an owned pointer to
-any data type. The type information is then lost for the rest of the garbage
-pipeline. However, upon destruction we need to know the type of the data we are
-dropping. The way we have solved this is by sending the data to a closure, so
-that the closure keeps track of the data used. The closure is never called, but
-upon dropping the closure all of the values moved to it are destroyed. A
-advanage of this solution is that it is simple to implement. A disadvantace is
-that the closure needs to be heap allocated, which increases the overhead of
-adding garbage.
+Memory we want to free is hidden behind the \code{Garbage} struct, which
+abstracts away the logic of calling the right destructor when we free the
+memory. \todo{rewrite this part} This is needed since \code{LocalState::add\_garbage} takes an
+\code{Owned<T>}, an owned pointer to any data type. The type information is then
+lost for the rest of the garbage pipeline. However, upon destruction we need to
+know the type of the data we are dropping. The way we have solved this is by
+moving the data to a closure, so that the closure keeps track of the type of the
+data.  The closure is never invoked, but upon dropping the closure all of the
+values moved to it are dropped. A advanage of this solution is that it is simple
+to implement. A disadvantace is that the closure needs to be heap allocated,
+which increases the overhead of adding garbage.
 \todo{implmeent tags or something, and profile?}
 
-When using the collections backed by EBR, the user must first obtain a
-\code{Pin}, which is a proof that the current thread is pinned. All operations on
-the collections requires a pin, such that we know that the memory read is not
-yet freed. There is no way to obtain the pin directly --- users must call the
-\code{pin} function, and supply a closure which is given the pin as an argument.
-This design decision is made in order to make it nearly impossible for users to
-grab a pin and keep it for a long amount of time, as this will effectively stop
-the memory reclamation. Having a closure also makes it very clear when the
-thread stops being pinned.
-
-The \code{pin} function is also where we reclaim the memory. Before calling the
-closure passed in, we read the global epoch, and increment our local pin
-counter. Every $n$ call to \code{pin}, we try to increment the epoch.
-If we succeed at incrementing the epoch we also free as much garbage as allowed
-from the global garbage list. This scheme is in a sense fair, in that threads
-that pin a lot supposedly create a lot of garbage, and these threads will also
-have to clean up once in a while. It does however suffer from the fact that a
-single thread is set to clean up all the garbage from other threads.
-\todo{As i'm writing this, I realize that this is a terrible idea. Should fix.}
-
-The thread entry list is a potential memory problem; each thread makes an entry
-the first time \code{pin} is called, and this entry is never removed. Thus, if
-the system keeps creating threads which crashes right after calling \code{pin},
-the list will quickly grow, and its elements will never be removed. This problem
-can be mitigated by removing the entry from the list if the thread shuts down
-gracefully; however there is still the problem of crashing threads. One solution
-could be to mark the entries with a timestamp, and remove entries that have been
-inactive for too long, as well as to set the threads thread local pointer to
-\code{null}. Neither of these two solutions have been implemented, as this is
-mainly a theoretical problem.
-
-We note that both the entry list and garbage queue themselves must be garbage
+We note that both the thread entry list and garbage queue themselves must be garbage
 collected, and that we use EBR on them. This poses a problem: for each
 garbage in the list, we need a node. However, that node itself will be garbage
 when it is popped from the list, so we need to push it into the garbage list,
 which makes a node, etc. Our solution to this is to chunk up garbage in chunks
 of a constant size, using the \code{Bag} struct. Thus the garbage queue is a
-\code{ebr::queue::Queue<Bag>}. The chunking is done thread locally, which also
+\code{ebr::queue::Queue<(usize, Bag)>}. The chunking is done thread locally, which also
 lowers synchronization overhead, since fewer elements are shared between threads.
 
+When using the collections backed by EBR, we must first obtain a \code{Pin},
+which is a proof that the current thread is pinned.  All methods on any
+collection requires a pin as the last argument, even though the methods may not
+actually use the pin in the method body. There is no way to obtain the pin
+directly: users must call the \code{pin} function, and pass in a closure which
+is then given the pin as an argument. Listing~\ref{lst:pin-ex} shows example
+usage on a queue. This design decision is made in order to discourage users to
+grab a pin and keep it for a long amount of time, as this will effectively stop
+the memory reclamation. Having a closure also makes it very clear when the
+thread stops being pinned. Internally in the \code{ebr} module, there is a
+method called \code{Pin::fake}, which makes a pin without actually pinning the
+thread. This is an optimization used when we know that we have exclusive access
+on certain meomory.
+
+\begin{figure}[ht!]
+\begin{lstlisting}[caption=Example usage of the \code{pin} fucntion,
+label=lst:pin-ex,numbers=none]
+let queue = Queue::new();
+pin(|pin| {
+  queue.push(42, pin);
+});
+\end{lstlisting}
+\end{figure}
+
+The \code{pin} function is also where we reclaim the memory.  Before calling the
+closure passed in, we read the global epoch, and increment our local pin
+counter. Every $n$th call to \code{pin}, we try to increment the epoch. For
+incrementation to occur, all the pinned threads must have read the current
+epoch. If we succeed at incrementing the epoch we also free as much garbage as
+allowed from the global garbage list. This scheme is in a sense fair, in that
+threads that pin a lot supposedly create a lot of garbage, and these threads
+will also have to clean up once in a while. It does however suffer from the fact
+that a single thread is set to clean up all the garbage from other threads.
+\todo{As i'm writing this, I realize that this is a terrible idea. Should fix.}
+
+The \code{Pin} struct contains a method for retiering garbage, aptly called
+\code{add\_garbage}. This method handles the thread local caching of garbage
+objects into a \code{Bag}, and pushes the bag with the current epoch into the
+global garbage queue when the bag is full. It does not support flushing the
+current \code{Bag} (that is, adding it to the global queue even when it is not
+full), although this is trivial to implement. \todo{What happends to garbage
+when a thread dies? Leak?} Typical useage of \code{add\_garbage} is to make a
+node unreachable by its data structure, read the data needed from it, and then
+call \code{add\_garbage} with an \code{Owned<Node<T>>}.  \code{pin} and
+\code{Pin::add\_garbage} are the only two methods a user of EBR needs to use.
+
+The thread entry list is a potential memory problem: each thread makes an entry
+the first time \code{pin} is called, and this entry is never removed. Thus, if
+the system keeps creating threads which crashes right after calling \code{pin},
+the list will quickly grow, and its elements will never be removed. This problem
+can be mitigated by removing the entry from the list if the thread shuts down
+gracefully; however this is still a problem if threads crashes. One solution
+could be to mark the entries with a timestamp, and remove entries that have been
+inactive for too long, as well as to set the threads thread local pointer to
+\code{null}. This creates further complications, since thread may have simply
+been preempted for a long time, such that other threads think it has crashed.
+This problem has not been attempted solved as it is mainly theoretical.
 
 \subsection{Hazard Pointers}
-\note{How did we implement hp? Trade-offs}
+
+The scheme for hazard pointers is simpler than that of EBR.\@ Each thread have a
+\code{ThreadEntry} which contains a fixed size array of hazard pointers, which
+are stored as \code{AtomicUsize}. The number of hazard pointers is stored in a
+constant. The entries is stored in a global list, and each thread has a local
+pointer to its entry in the list.  The \code{Ptr} struct is extended with a
+\code{hazard} method, which makes a \code{HazardPtr} struct.  \code{HazardPtr}
+wraps an address which, and contains methods for registering and deregistering
+the pointer in the threads list, checking if the pointer is registered by other
+threads, and a spin-loop for waiting until all other threads have deregistered
+the pointer.
+
+Logically, a \code{HazardPtr} is a proof that the pointer is safe to use by the
+thread. There is no abstraction around the validation of the hazard pointers;
+this has to be done manually. Deregistering the hazard pointer is done in its
+destructor.
+
+\note{So far, HPs are freed after spinning. We should probably make a global
+queue of retired HPs, and look through them every once in a while. Could use
+\code{hazard()} to hijack execution?}
+
+
+
+
 
 \section{Verification}
 Programming concurrent systems is hard Verifying \emph{any} system is also
@@ -725,9 +776,36 @@ hard Therefore, we are lead to believe that verifying a concurrent system is
 \emph{very} hard This seems to be the case \note{this is probably too dumb
 and ``funny''}.
 
+While developing, we used unit tests. See Section~\ref{sec:rust-test} for a
+primer on writing tests in Rust.
+
+Testing were primarily done on the development machines of the author, which are
+all \code{x86} machines. \todo{add note on bugs on ARM, if any}
+
+The majority of the so-far found bugs in the sytsem is memory bugs. Use after
+free bugs, double free bugs, illegal memory accesses, and memory leaks. Double
+frees and illegal memory accesses are usually hard faults, such that the
+programs execution stops, and we are notified that eg. \code{0x8} is indeed not
+a valid memory address to read from.
+
+Use after free bugs and memory leaks are more difficult to find. Here we found
+great use in Valgrind\cite{valgrind}, a instrumemtation framework, which
+contains the tool \code{memcheck}. \code{memcheck} intercepts all memory
+operations, tracks allocations and frees, and is able to report most, if not
+all, memory problems. One minor problem with using Valgrind with Rust is that
+Valgrind has incomplete support of the default allocator in Rust,
+\code{jemalloc}\cite{jemalloc}. However, changing the allocator in Rust to the system
+allocator, which Valgrind supports fully, is possible.
+
+
+
 \section{Profiling}
 \note{How do we benchmark?}
 \todo{actually find out this!}
+
+\note{Should add note on microbenchmarks. \code{cargo bench} is alright, but we
+get very varying results, since we amortize cleanup over a many runs. This makes
+the results given not so good.}
 
 
 \chapter{Results}
@@ -804,6 +882,7 @@ Hello, world!
   For more information about cargo see~\url{http://doc.crates.io/index.html}.
 
   \section{\code{\#[test]} and \code{\#[bench]}}
+  \label{sec:rust-test}
   The Rust toolchain supports both testing and benchmarking. To write tests we
   make an inline module named \code{test}, and conditionally compile it using
   \code{\#[cfg(test)]}. This makes the code to be ignored unless we are running
