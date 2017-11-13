@@ -803,6 +803,47 @@ allocator, which Valgrind supports fully, is possible.
 \note{How do we benchmark?}
 \todo{actually find out this!}
 
+An interesting problem that turned up when benchmarking is the following: how do
+we benchmark the data structures that does not reclaim any memory? The problem
+is that the benchmarking system runs a loop an unspecified number of times, to
+make sure the results are statistically significant\note{this is probablyt not
+the right word}. This means that we cannot directly control the number of nodes
+we allocate which we do not free, and we risk running out of memory. This causes
+the system to swap memory to disk, which destroys performance.
+
+Fortunately, \code{bencher} does support executing code in between $n$ benchmark
+iterations, where we get to specify $n$. We can use this to preallocate a
+\code{Vec}, in which we put pointers to the memory we allocate in the data
+structure we profile. Then, after the $n$ iterations, we free that memory.  This
+requires some \code{unsafe} code, but it is fully supported by the \code{Vec}
+from the standard library. This is a better technique than to allocate the nodes
+up front and pass the \code{Node} to the procedures, as this would hide the
+allocation cost of the procedure. Listing~\ref{lst:bench-nothing} shows a
+benchmark of a Queue using this technique.
+
+\begin{figure}[ht]
+  \begin{lstlisting}[caption=Microbenchmark of a data structure without memory
+  reclamation,label=lst:bench-nothing]
+pub fn push(b: &mut Bencher) {
+    const N: u64 = 1024 * 1024;
+    b.bench_n(N, |b| {
+        let queue = Queue::new();
+        let mut ptrs = Vec::with_capacity(N as usize);
+        let ptr = ptrs.as_mut_ptr();
+        let mut i = 0;
+        b.iter(|| {
+            queue.push(0usize, unsafe { ptr.offset(i) });
+            i += 1;
+        });
+        unsafe {
+            ptrs.set_len(N as usize);
+        }
+    });
+}
+  \end{lstlisting}
+\end{figure}
+
+
 \note{Should add note on microbenchmarks. \code{cargo bench} is alright, but we
 get very varying results, since we amortize cleanup over a many runs. This makes
 the results given not so good.}
@@ -921,6 +962,7 @@ test ebr::queue::test::is_unique_receiver ... ok
     \end{lstlisting}
   \end{figure}
 
+  \todo{Replace this with using \code{bencher}.}
   Benchmarking is similar, except that we do not have a conditional compilation
   flag for benchmarks. For similarity, we can put benchmarks in the \code{bench}
   module. Benchmarks are annotated with \code{\#[bench]}. The benchmarks are ran
