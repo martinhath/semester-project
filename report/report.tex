@@ -2,14 +2,15 @@
 \usepackage[lmargin=25mm,rmargin=25mm,tmargin=27mm,bmargin=30mm]{geometry}
 
 \usepackage[toc]{appendix}
+\usepackage{graphicx}
+\usepackage{subcaption}
 \usepackage{listings}
 \usepackage{color}
 \usepackage{xcolor}
 \usepackage{tikz}
 \usepackage{hyperref}
 \usepackage{parskip}
-\usetikzlibrary{positioning}
-\usetikzlibrary{shapes,decorations,shadows}
+\usetikzlibrary{positioning,shapes,decorations,calc}
 
 \begin{document}
 \title{Concurrent Memory Reclamation on ARM}
@@ -118,6 +119,7 @@ amount of time For a more thorough introduction see~\cite{herlihy2011art}.
 \todo{Add note about not a formal spec}
 \todo{Add note on generics being like templates and not dyn.disp.}
 \todo{destroy/drop}
+\todo{Trait terminology. Implements. Mention most important traits?}
 
 % New programming language, memory safety without GC, etc.
 \todo{This doesn't read very well. Fix.
@@ -563,6 +565,7 @@ change between, say, HP and EBR\@.
 \todo{Revisit RC here, with the stuff from the blog?
 Or maybe its better to just put it at the end of the subsection.}
 
+
 \section{Other Schemes}
 \note{We don't have time to implement all interesting schemes,
 but it would be nice to have them in the report}
@@ -572,6 +575,7 @@ but it would be nice to have them in the report}
 \note{How did we implement the schemes? What choices did we have to take?
 Whys. Also implementation problems, testing techniques, profiling setup etc.
 Include std allocator change}
+
 
 \section{Implementation}
 There is often a disconnect between the idea of a system and the implementation
@@ -584,6 +588,7 @@ context of the language we are using.
 The data structures were first implemented without any regard for memory
 reclamation. Allocated memory were simply leaked when no longer needed.
 
+
 \subsection{Atomics}
 
 \note{Write about atomic types. If this is to be a section we need to clean up
@@ -595,26 +600,33 @@ As mentioned in Section~\ref{sec:rust}, it is idiomatic Rust to unitize the type
 system in order to help ourselves. We have made other atomic types in addition
 to those in the standard library in order to capture wanted semantics.
 
+
 \subsection{Data Structures}
-\note{some short intro about DS}
+\label{sec:data-structures}
+
+For comparing concurrent memory reclamation in a meaningful way we need shared
+memory, organized in some data structure. We have chosen to implement two of the
+most commonly seen concurrent data structures: the Queue and the List. Both
+implementation are well known in the field of concurrent data structures. We
+chose to implement these relative simple data structures due to time constraints
+of the project.
+
 
 \subsubsection{Queue}
 
-\note{how did we implement the queue?}
-\todo{Consider explaining how the MSqueue works}
-
 The queue implemented is a Michael-Scott Queue, as described
-in~\cite{michael1996simple}. The \code{Queue} and \code{Node} structs, as well
-as the signatures for the public functions are listed in
-Listing~\ref{lst:msqueue}. The implementation of \code{push} and \code{pop} is
-heavily inspired of the implementation from Crossbeam\cite{crossbeam-msqueue}.
-We support \code{pop\_if}, since we use this in the implementation of EBR.
-\code{push} allocates the memory needed for the node, which in microbenchmarks
-have been shown to take the majority of the time: allocation averaged at 54ns,
-while the rest of the procedure averaged at 30ns.  A natural optimization of
-this problem is to allocate nodes from a memory arena or similar, such that the
-allocation overhead is amortized over multiple calls to \code{push}. However,
-this seriously increses the complexity of the memory management schemes.
+in~\cite{michael1996simple}. \todo{Consider explaining how the MSqueue works}
+The \code{Queue} and \code{Node} structs, as well as the signatures for the
+public functions are listed in Listing~\ref{lst:msqueue}. The implementation of
+\code{push} and \code{pop} is heavily inspired of the implementation from
+Crossbeam\cite{crossbeam-msqueue}.  We support \code{pop\_if}, since we use this
+in the implementation of EBR.  \code{push} allocates the memory needed for the
+node, which in microbenchmarks have been shown to take the majority of the time:
+allocation averaged at 54ns, while the rest of the procedure averaged at 30ns.
+A natural optimization of this problem is to allocate nodes from a memory arena
+or similar, such that the allocation overhead is amortized over multiple calls
+to \code{push}. However, this seriously increses the complexity of the memory
+management schemes.
 
 \begin{figure}[ht]
 \begin{lstlisting}[caption=Structs for the Michael-Scott
@@ -647,8 +659,105 @@ values in the queue to be cleaned up correctly when the queue is destroyed.
 \subsubsection{List}
 \note{how did we implement the list?}
 
-The list we have implemented is based on the list presented
-by Michael in~\cite{michael2002high}.
+The list we have implemented is based on the list presented by Michael
+in~\cite{michael2002high}.  The implementation is similiar to the Michael-Scott
+Queue in multiple ways.  For instance, we support a \code{remove\_front}
+operation, which is almost identical to \code{Queue::pop}. However, the default
+insertion operation of the List pushes the inserted element to the beginning of
+the list, such that \code{List::insert} and \code{List::remove\_front} has LIFO
+semantics. We also support removals for values which are comparable (implements
+\code{PartialEq}). \note{assume we have \code{insert\_after} or something.} This
+procedure complicates the implementation: consider the list in
+Figure~\ref{fig:list-remove}. We want to remove node B, so we swing
+\code{A.next} from B to C. However, at the same time, a thread might insert a
+new node X in between B and C. When we now change \code{A.next} to \code{C}, we
+have removed two items: B and X.
+
+\begin{figure}[h]
+  \begin{subfigure}[b]{\textwidth}
+      \centering
+      \begin{tikzpicture}
+        [node distance = 2.5cm, auto,
+        lnode/.style={rectangle split, rectangle split horizontal,
+                      rectangle split parts=2, draw, rounded corners=0.1cm }
+        ]
+        \node [lnode,label={A}] (A)              {\code{data} \nodepart{second} \code{next}};
+        \node [lnode,label={B}] (B) [right of=A] {\code{data} \nodepart{second} \code{next}};
+        \node [lnode,label={C}] (C) [right of=B] {\code{data} \nodepart{second} \code{next}};
+        \draw[-latex] ($ (A.west) - (0.5,0) $) -- (A.west);
+        \draw[-latex] (A.east) -- (B.west);
+        \draw[-latex] (B.east) -- (C.west);
+        \draw[-latex] (C.east) -- ($ (C.east) + (0.5, 0) $);
+        \draw[-latex,color=lightgray] ($ (A.north) + (0.5,0) $) to[out=45,in=135] ($ (C.north) -
+          (0.5, 0) $);
+      \end{tikzpicture}
+      \caption{The initial list. When removing B we swing the \code{next}
+      pointer over to C.\label{fig:list-remove-a}}
+  \end{subfigure}
+
+  \begin{subfigure}[b]{\textwidth}
+      \centering
+      \begin{tikzpicture}
+        [node distance = 2.5cm, auto,
+        lnode/.style={rectangle split, rectangle split horizontal,
+                      rectangle split parts=2, draw, rounded corners=0.1cm }
+        ]
+        \node [lnode,label={A}] (A)              {\code{data} \nodepart{second} \code{next}};
+        \node [lnode,label={B}] (B) [right of=A] {\code{data} \nodepart{second} \code{next}};
+        \node [lnode,label={X}] (X) [right of=B] {\code{data} \nodepart{second} \code{next}};
+        \node [lnode,label={C}] (C) [right of=X] {\code{data} \nodepart{second} \code{next}};
+        \draw[-latex] ($ (A.west) - (0.5,0) $) -- (A.west);
+        \draw[-latex] (A.east) -- (B.west);
+        \draw[-latex] (B.east) -- (X.west);
+        \draw[-latex] (X.east) -- (C.west);
+        \draw[-latex] (C.east) -- ($ (C.east) + (0.5, 0) $);
+        \draw[-latex,color=lightgray] ($ (A.north) + (0.5,0) $) to[out=45,in=135] ($ (C.north) -
+          (0.5, 0) $);
+      \end{tikzpicture}
+      \caption{Another thread inserts a new node X between B and C.\label{fig:list-remove-b}}
+  \end{subfigure}
+
+  \begin{subfigure}[b]{\textwidth}
+      \centering
+      \begin{tikzpicture}
+        [node distance = 2.5cm, auto,
+        lnode/.style={rectangle split, rectangle split horizontal,
+                      rectangle split parts=2, draw, rounded corners=0.1cm }
+        ]
+        \node [lnode,label={A}] (A)              {\code{data} \nodepart{second} \code{next}};
+        \node [lnode,label={\color{lightgray}B},color=lightgray] (B) [right of=A] {\code{data} \nodepart{second} \code{next}};
+        \node [lnode,label={\color{lightgray}X},color=lightgray] (X) [right of=B] {\code{data} \nodepart{second} \code{next}};
+        \node [lnode,label={C}] (C) [right of=X] {\code{data} \nodepart{second} \code{next}};
+        \draw[-latex] ($ (A.west) - (0.5,0) $) -- (A.west);
+        \draw[-latex,color=lightgray] (B.east) -- (X.west);
+        \draw[-latex,color=lightgray] (X.east) -- (C.west);
+        \draw[-latex] (C.east) -- ($ (C.east) + (0.5, 0) $);
+        \draw[-latex] ($ (A.north) + (0.5,0) $) to[out=45,in=135] ($ (C.north) -
+          (0.5, 0) $);
+      \end{tikzpicture}
+      \caption{End result. B and X is no longer reachable from the head of the
+        list. \label{fig:list-remove-b}}
+  \end{subfigure}
+  \caption{List removal which removes two elements when there is a concurrent
+  insertion. This happens because the \code{compare-and-swap} operation
+  performed on \code{A.next} is succeeds since the previous value is not changed.
+  However, the new value is logically changed, although there is no way for the
+\code{CAS} to detect that.\label{fig:list-remove}}
+\end{figure}
+
+Our solution to this problem is simple and effective: we \emph{tag} the node we
+want to remove, such that other threads do not add a new node after it. We
+exploit the fact that memory addresses are aligned, meaning that the address of
+an object in memory is divisible by some number. Objects are typically aligned
+by their size, such that \code{u32}s are only on addresses where the four least
+significant bits are zero. Bytes are ``aligned'' on 1 byte boundaries,
+effectively meaning they are not aligned at all. Since we know that the pointers
+we have points to larger objects, the LSB of the pointer itself is free. We use
+this to tag the node.
+\todo{double check which node we are tagging}
+\note{Write about how insert checks for tag. What about searches? Note on search
+- if the node is about to be removed, what do we report?}
+
 
 \subsection{Epoch Based Reclamation}
 
@@ -803,6 +912,19 @@ allocator, which Valgrind supports fully, is possible.
 \note{How do we benchmark?}
 \todo{actually find out this!}
 
+We compare the performance overhead of HP, EBR, and without any reclamation. We
+look at their performance implication when we operate on the queue and the list,
+as described in Section~\ref{sec:data-structures}. We start out by looking at
+the performance on a single threaded system, in order to get a notion of how how
+much overhead the schemes impose. Then we look at a larger multithreaded system,
+so see how well the schemes handle contention. \note{This sounds like a better
+fit for the Results chapter?}
+
+\note{Maybe we want to compare before and after comparisons after we have
+optimized the code a little? Look at ordering implications?}
+
+\subsection{Singlethreaded Benchmarks}
+
 An interesting problem that turned up when benchmarking is the following: how do
 we benchmark the data structures that does not reclaim any memory? The problem
 is that the benchmarking system runs a loop an unspecified number of times, to
@@ -842,6 +964,9 @@ pub fn push(b: &mut Bencher) {
 }
   \end{lstlisting}
 \end{figure}
+
+
+\subsection{Multithreaded Benchmarks}
 
 
 \note{Should add note on microbenchmarks. \code{cargo bench} is alright, but we
@@ -1032,6 +1157,9 @@ linker = "aarch64-linux-gnu-gcc"
 
 
 
+  \todo{Consider add a Git appendix, to show simple checkout stuff, such that
+  ``readers'' who don't know Git can clone the repo, and checkout a commit in
+  order to run some tests.}
 
 \end{appendices}
 
