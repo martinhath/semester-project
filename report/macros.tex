@@ -6,7 +6,8 @@
 \newcommand{\cargo}{\code{cargo}}
 \newcommand{\rustup}{\code{rustup}}
 
-
+\tikzset{node distance = 2.5cm, auto, lnode/.style={rectangle split, rectangle
+split horizontal, rectangle split parts=2, draw, rounded corners=0.05cm }}
 
 \lstset{ %
  backgroundcolor=\color{white}, % choose the background color; you must add \usepackage{color} or \usepackage{xcolor}; should come as last argument
@@ -22,9 +23,9 @@
 % keepspaces=true,              % keeps spaces in text, useful for keeping indentation of code (possibly needs columns=flexible)
  keywordstyle=\color{purple},    % keyword style
  language=C,                    % the language of the code
- keywords={let,mut,fn,return,pub,struct,where,impl,as},
+ keywords={let,mut,fn,return,pub,struct,where,impl,as,match},
 % morekeywords={*,...},         % if you want to add more keywords to the set
- numbers=left,                  % where to put the line-numbers; possible values are (none, left, right)
+ numbers=none,                  % where to put the line-numbers; possible values are (none, left, right)
  numbersep=5pt,                 % how far the line-numbers are from the code
  numberstyle=\color{gray}\ttfamily,           % the style that is used for the line-numbers
 % rulecolor=\color{black},      % if not set, the frame-color may be changed on line-breaks within not-black text (e.g. comments (green here))
