@@ -47,10 +47,10 @@ In 1965 Gordon Moore stated what is now knows as \emph{Moore's Law}, which
 roughly states that the number of transistors on integrated circuits will
 double every 18 months The law has also been used to describe the clock speed
 of central processing units (CPU's) However, this exponential growth came to a
-halt during the 2000s, where the clock speed of Cups stopped between 3 GHz and
-4 GHz Over 10 years later high end consumer Cups still have a clock speed in
-that same range, and the performance increase of modern Cups has mainly been
-due to increase in parallelism\note{has it, though Or is it more that Cups
+halt during the 2000s, where the clock speed of CPUs stopped between 3 GHz and
+4 GHz Over 10 years later high end consumer CPUs still have a clock speed in
+that same range, and the performance increase of modern CPUs has mainly been
+due to increase in parallelism\note{has it, though Or is it more that CPUs
 hasn't really improved that much?} This improvement however, has not been as
 noticeable as the former improvements in clock speed. This is because programs
 already written cannot automatically use the extra parallelism that newer
@@ -59,7 +59,7 @@ architectures give us; Parallelism needs to be accounted for by programmers.
 \note{fix this. It reads alright on its own, but the previous paragraph ends
 with the same thing, making it very weird to read.}
 Despite having multi-core architectures as the most central performance
-improvement in Cups, parallelism is not a success story for programmers Most
+improvement in CPUs, parallelism is not a success story for programmers Most
 mainstream programming languages does not have first class support for parallel
 constructs, and synchronization and work management\note{?} must still be
 handled explicitly by the programmer, using fairly low level constructs, such
@@ -673,7 +673,7 @@ Figure~\ref{fig:list-remove}. We want to remove node B, so we swing
 new node X in between B and C. When we now change \code{A.next} to \code{C}, we
 have removed two items: B and X.
 
-\begin{figure}[h]
+\begin{figure}[ht]
   \begin{subfigure}[b]{\textwidth}
       \centering
       \begin{tikzpicture}
