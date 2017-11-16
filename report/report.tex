@@ -117,9 +117,9 @@ introduction see~\cite{herlihy2011art}.
 \section{Rust}\label{sec:rust}
 
 Rust~\cite{rust} is a programming language which focus is safety, performance,
-and concurrency.  It is is freely developed by over 1900 contributors on the
+and concurrency. It is is freely developed by over 1900 contributors on the
 version control platform GitHub~\cite{github}, and is officially sponsored by
-Mozilla.  Rust 1.0 was released in May 2015, and the current stable version of
+Mozilla. Rust 1.0 was released in May 2015, and the current stable version of
 the language is 1.21, with a new version released every 6th week. The language
 is compiled and typed, and includes features such as type inference, pattern
 matching, tagged enums, template-like generics, and a minimal runtime without a
@@ -143,7 +143,7 @@ of the function calls of the value.
 Despite the lack of a garbage collector, Rust programmers does not have to
 manually manage memory. Rust solves this through \emph{ownership} semantics:
 values are either \emph{owned} or \emph{borrowed} by its scope. Transfering
-ownership of a value is possible by \emph{moving} it.  When a borrwed value goes
+ownership of a value is possible by \emph{moving} it. When a borrwed value goes
 out of scope, nothing happens as a borrowed value is simply a pointer. When an
 owned value goes out of scope it is \emph{dropped}, meaning its destructor is
 ran. Rust's ownership rules, which are enforced by the compiler, guarantees that
@@ -182,7 +182,7 @@ language, offers an escape hatch for this: \emph{unsafe code}. In unsafe code it
 is allowed to: dereference raw pointers, call \code{unsafe} functions, implement
 \code{unsafe} traits, and mutate static variables. Raw pointers are, as in C and
 C++, just a memory address, and as with references, both a immutable
-(\code{*const T}) and mutable (\code{*mut T}) variants exist.  In unsafe Rust,
+(\code{*const T}) and mutable (\code{*mut T}) variants exist. In unsafe Rust,
 we enter the dangerous and error-prone territory that C and C++ programmers know
 all too well. Examples of \code{unsafe} functions are all FFI functions,
 unchecked array indexing, and creating a \code{String} without UTF-8 checks (all
@@ -207,47 +207,60 @@ perfectly safe code.
 
 \section{Parallelism in Hardware}
 
-\note{reconsider having hardware and software sections. Maybe it's better to
-  just have one?} \note{hardware ordering. Atomic operations (CAS, FA, etc.),
-  notes on other futuristic atomic operations} \note{We should focus on the
-  things that are currently supported in hardware, since this is more of a
-practical thing.}. We consider multi-core CPU's with multiple levels of cache;
-This includes most modern CPU's, both desktop computers and laptops, as well as
-mobile devices such as smartphones and tablets. The first cache level, L1, is
-usually only used by one core, while the remaining levels, L2 (and maybe L3),
-are shared. This means that when a program is writing to memory, the same
-logical memory may be present in multiple physical locations on the CPU, which
-causes synchronization problems when this memory is written to. This is the
-problem of \emph{cache coherence}.
+Most programmers rarely have to think about the hardware their programs run on.
+Caches, for instance, is designed to be transparent for programmers. With
+concurrency this changes, as concurrent programming have challenges in which a
+mental model of how the hardware works is paramount. In this section we consider
+multi-core CPU's with multiple levels of cache; this includes most modern CPU's,
+both desktop computers and laptops, as well as most mobile devices, such as
+smartphones and tablets.
 
-\note{???}
-We would like our programs to be sequentially consistent. However, we also
-want our hardware to be performant, and it turns out that these two
-requirements are conflicting, and we have chosen the latter.
+The chache hierarchy poses a problem for shared memory programs. The first cache
+level, L1, is usually only used by one core, while the remaining levels, L2 (and
+maybe L3), are shared. This means that when a program is writing to memory, the
+same logical memory may be present in multiple physical locations on the CPU.\@
+This causes synchronization problems when this memory is written to. This is the
+problem of \emph{cache coherence}. A memory range does not even have to be used
+by multiple threads: since caches operates in memory chunks, called \emph{cache
+lines}, it is enough that two values are on the same cache line for
+synchronization to occur. This is called \emph{false sharing}.
 
+We would like our programs to be sequentially consistent, as this maps the
+program execution to the source code of the program. However, we also want our
+programs to be performant, and it turns out that from a hardware perspective
+these two requirements are conflicting. CPUs are simply not sequentially
+consistent.
 
-\todo{could probably make this better: memory models isn't all about
-reordering.}. Different CPU architectures have different memory models, which
-dictates how much the CPU is allowed to reorder reads and writes without
-breaking the semantics of the program when ran sequentially. For this reason,
-architectures have constructs for saying ``do not move memory operations across
-this line'', called \emph{memory fences} or \emph{barriers} x86 have a rather
-strong memory model, meaning the CPU is very limited in its ability to reorder.
-For instance, x86 forbids reads to be reordered with other reads, and writes
-with other writes. It also forbids any reordering with locked instructions;
-this is very strict, as the preferred instruction used for sequential
-consistent atomic store is a locked instruction, meaning atomic stores are full
-fences ARM on the other hand, have a comparably weak memory model. A
-disadvantage of this is that sequentially consistent atomics require full fences
-for both loads and stores, since they are allowed to be reordered ARMv8 fixes
-this by having explicit instructions for SC load and store. For more
-information on x86, see Chapter 8.2.2 in~\cite{intel64}; for information about
-ARMv7 and ARMv8 see \todo{sources}.
+CPU architectures have rules on how much the CPU is allowed to reorder reads and
+writes without breaking the semantics of the program when ran sequentially. They
+also have instructions explicitly for avoiding instruction reordering, called
+\emph{memory fences} (or \emph{barriers}; we will use the former name). The x86
+architecture have a rather strong \emph{memory model}, meaning the CPU is very
+limited in its ability to reorder.  For instance, x86 forbids reads to be
+reordered with other reads, and writes with other writes. It also forbids any
+reordering with locked instructions; this is very strict, as the preferred
+instruction used for sequential consistent atomic store is a locked instruction,
+meaning atomic stores are full fences. ARM on the other hand, have a comparably
+weak memory model. A disadvantage of this is that sequentially consistent
+atomics require full fences for both loads and stores, since they are allowed to
+be reordered. ARMv8 offers a solution to this by having explicit instructions
+for SC loads and stores. For more information on x86, see Chapter 8.2.2
+in~\cite{intel64}; for information about ARMv7 see~\cite{armv7-reference-manual},
+and for ARMv8 see~\cite{armv8-reference-manual}.
 
+Instruction sets have \emph{atmoic} operations. An operation is atomic if its is
+performed either fully or not at all. For instance, if thread A non-atomically
+stores a value at a location, thread B may observe the write when it is only
+partially performed. This is not possible using atomic instructions.  Atoimc
+load and store is the two most fundamental atomic operations, but most platforms
+also give us additional instructions; the most notable begin
+\code{compare-and-swap} (\code{CAS}). \code{CAS} takes three arguments: a memory
+address, a value A, and a value B. If the value at the given address is A, it
+writes B to the address. If not, nothing is done. \code{CAS} is a central
+building block in concurrent programming, and especially in lock-free
+programming.
 
-\note{blabalba}
-
-
+\note{We can mention transactional memory, and stuff like that?}
 
 \section{Parallelism in Software}
 \note{Hardware works such and such, but how does programmers handle these
@@ -291,11 +304,12 @@ while f == 0 { }                 x = 1
 print(x)                         f = 1
 \end{lstlisting}
 \end{figure}
-When ran sequentially (alternating between the two), we would observe no
-difference if the assignments were reordered. However, when run concurrently
-thread B might decide to assign \code{f = 1} first, and thread A will risk
-printing \code{0} instead of \code{1}, which was the only case in the
-sequential world.
+
+When ran sequentially (first B and then A), we would observe no difference if
+the assignments of Thread B were reordered; the end result would be that we
+print \code{1}. However, when run concurrently thread B might decide to assign
+\code{f = 1} first, and thread A will risk printing \code{0} instead of
+\code{1}. This outcode was impossible in the sequential world.
 
 A solution to this problem is to use a memory fence, in order to explicitly
 disallow any reordering past it, as in Listing~\ref{lst:mem-fence}.
@@ -569,7 +583,7 @@ The \code{Queue} and \code{Node} structs, as well as the signatures for the
 public functions are listed in Listing~\ref{lst:msqueue}. The implementation of
 \code{push} and \code{pop} is heavily inspired of the implementation from
 Crossbeam\cite{crossbeam-msqueue}. We support \code{pop\_if}, since we use this
-in the implementation of EBR.  \code{push} allocates the memory needed for the
+in the implementation of EBR. \code{push} allocates the memory needed for the
 node, which in microbenchmarks have been shown to take the majority of the time:
 allocation averaged at 54ns, while the rest of the procedure averaged at 30ns.
 A natural optimization of this problem is to allocate nodes from a memory arena
