@@ -123,18 +123,19 @@ Mozilla. Rust 1.0 was released in May 2015, and the current stable version of
 the language is 1.21, with a new version released every 6th week. The language
 is compiled and typed, and includes features such as type inference, pattern
 matching, tagged enums, template-like generics, and a minimal runtime without a
-garbage collector. The language has no formal speficication, and language
-changes are done through an RFC (``request for comments'') process. The syntax
-of Rust is out of scope for this report, so we will settle with a highlight of
-the most important features of Rust. For a thorough introduction to Rust, see
-The Rust Programming Language\cite{trpl}.
+garbage collector. As of November 2017 the official Rust compiler \code{rustc}
+uses LLVM~\cite{llvm} for optimization and code generation. The language has no
+formal specification, and language changes are done through an RFC (``request
+for comments'') process. The syntax of Rust is out of scope for this report, so
+we will settle with a highlight of the most important features of Rust. For a
+thorough introduction to Rust, see The Rust Programming Language\cite{trpl}.
 
 As C++, Rust has structs. It does not however have classes or inheritance. The
 type system is based around \emph{traits}, which are comparable to interfaces in
 Java. A trait defines methods, optionally with an implementation. We can then
 \emph{implement} the trait for a struct. Implementing a trait for a struct
 requires that either the trait of the struct is defined in the \emph{crate} the
-implementation is in. A consequence of this is that it is possbile to extend
+implementation is in. A consequence of this is that it is possible to extend
 types from the standard library. It is possible to have values which type is a
 trait, called \emph{trait objects}. This is useful when we want to be agnostic
 of the implementation of an interface. However, this requires dynamic dispatch
@@ -142,8 +143,8 @@ of the function calls of the value.
 
 Despite the lack of a garbage collector, Rust programmers does not have to
 manually manage memory. Rust solves this through \emph{ownership} semantics:
-values are either \emph{owned} or \emph{borrowed} by its scope. Transfering
-ownership of a value is possible by \emph{moving} it. When a borrwed value goes
+values are either \emph{owned} or \emph{borrowed} by its scope. Transferring
+ownership of a value is possible by \emph{moving} it. When a borrowed value goes
 out of scope, nothing happens as a borrowed value is simply a pointer. When an
 owned value goes out of scope it is \emph{dropped}, meaning its destructor is
 ran. Rust's ownership rules, which are enforced by the compiler, guarantees that
@@ -154,18 +155,19 @@ trait for constructors, but by convention a method called \code{new} is used.
 An example of an abstraction using both \code{new} and \code{Drop} is
 \code{std::box::Box<T>}, a fat pointer to a heap allocated value of type
 \code{T}. The \code{new} implementation allocates the memory, and \code{drop}
-will free the memory. This way we get a safe abstraction over heap allocation,
-since the memory is freed exactly once when the \code{Box} goes out of scope.
-\code{Box<T>} also implements another trait, \code{Deref<T>}, which causes
-\code{Box} references to automatically be converted by the compiler to \code{T}
-references, when needed. We note that we can \emph{not} pass a \code{Box<T>} to
-a function that takes a \code{T}, since they have different \code{drop}
-implementations.
+will free the memory. This pattern is often called \emph{RAII} (resource
+allocation is initialization). This way we get a safe abstraction over heap
+allocation, since the memory is freed exactly once when the \code{Box} goes out
+of scope.  \code{Box<T>} also implements another trait, \code{Deref<T>}, which
+causes \code{Box} references to automatically be converted by the compiler to
+\code{T} references, when needed. We note that we can \emph{not} pass a
+\code{Box<T>} to a function that takes a \code{T}, since they have different
+\code{drop} implementations.
 
 In addition to the ownership rules, Rust have two important rules for
 references: references are always valid, and aliased references where more than
 one is mutable is not allowed. At compile time Rust tracks the \emph{lifetime}
-of all values, and ensures that the lifetime of all references does not outlife
+of all values, and ensures that the lifetime of all references does not outlive
 the lifetime of the data they are referencing. If a function returns a reference
 to a value allocated on the stack of that function it is caught at compile time,
 since the references lifetime would outlive the functions lifetime, and the
@@ -198,14 +200,14 @@ By exposing \code{unsafe} to programmers, one might argue that Rust is just as
 unsafe as C or C++. The primary advantage of \code{unsafe} is that the ratio of
 unsafe to safe code is very low. For instance, the Rust compiler itself consists
 only of $1\%$ unsafe code\cite{rustc-unsafe}. This makes it possible to focus on
-the few places in a codebase that is unsafe when developing, testing, and code
+the few places in a code base that is unsafe when developing, testing, and code
 reviewing. It is however important to realize that the effects of unsafe code is
-non-local: bugs in unsafe code can cause undefined behaviour to take effect in
+non-local: bugs in unsafe code can cause undefined behavior to take effect in
 perfectly safe code.
 
 
 
-\section{Parallelism in Hardware}
+\section{Concurrency in Hardware}
 
 Most programmers rarely have to think about the hardware their programs run on.
 Caches, for instance, is designed to be transparent for programmers. With
@@ -215,7 +217,7 @@ multi-core CPU's with multiple levels of cache; this includes most modern CPU's,
 both desktop computers and laptops, as well as most mobile devices, such as
 smartphones and tablets.
 
-The chache hierarchy poses a problem for shared memory programs. The first cache
+The cache hierarchy poses a problem for shared memory programs. The first cache
 level, L1, is usually only used by one core, while the remaining levels, L2 (and
 maybe L3), are shared. This means that when a program is writing to memory, the
 same logical memory may be present in multiple physical locations on the CPU.\@
@@ -248,10 +250,10 @@ for SC loads and stores. For more information on x86, see Chapter 8.2.2
 in~\cite{intel64}; for information about ARMv7 see~\cite{armv7-reference-manual},
 and for ARMv8 see~\cite{armv8-reference-manual}.
 
-Instruction sets have \emph{atmoic} operations. An operation is atomic if its is
+Instruction sets have \emph{atomic} operations. An operation is atomic if its is
 performed either fully or not at all. For instance, if thread A non-atomically
 stores a value at a location, thread B may observe the write when it is only
-partially performed. This is not possible using atomic instructions.  Atoimc
+partially performed. This is not possible using atomic instructions.  Atomic
 load and store is the two most fundamental atomic operations, but most platforms
 also give us additional instructions; the most notable begin
 \code{compare-and-swap} (\code{CAS}). \code{CAS} takes three arguments: a memory
@@ -262,41 +264,22 @@ programming.
 
 \note{We can mention transactional memory, and stuff like that?}
 
-\section{Parallelism in Software}
+\section{Concurrency in Software}
+
 \note{Hardware works such and such, but how does programmers handle these
 things?  Mention \code{volatile}? Look at instructions?  Many programmers does
 not think about cache problems. What about concurrency problems? May they also
 be ignored? (no)}
 
-Rust uses the same memory model as LLVM, which is inspired by the C++11 memory
-model~\cite{llvmmm}. LLVM also defines the memory ordering constraint types that
-Rust uses. We will use the memory orderings as defined in
-\code{sync::atomic::Ordering}~\cite{rust-ordering}. There are five variants:
-\code{Relaxed}, \code{Release}, \code{Acquire}, \code{AcqRel}, and
-\code{SeqCst}, \code{Relaxed} is the weakest and offers no ordering
-constraints. Atomic operations with this ordering differs only from regular
-operations in that the operation is happening instantaneously.
-\code{Acquire} and \code{Release} are intended to work in pairs, by loading with
-\code{Acquire} and storing with \code{Release} in the same memory location.
-\code{Acquire} ensures that data written in between it and a \code{Release}
-store on the same memory address is visible to other threads. This is typically
-used to implement a lock, where we \code{Acquire} the lock before the critical
-section, and \code{Release} the lock after it. Now the operations inside the
-critical section are not allowed to be reordered out of it.
-\code{AcqRel} is the \code{Release} ordering when used with a store, and
-\code{Acquire} when used with a load. \code{SeqCst} is \code{AcqRel}, but it
-also guarantees that all threads see all SC operations is the same order.
-\note{Maybe we will not use other orderings than SeqCst for anything, for
-simplicity?  Time etc. Also, ``Hans Boehm'' warns that it is very hard to get
-right, and that it is probably not possible to hide the choices of orderings
-from clients of libraries. We could write a paragraph here explaining what
-it's about, and then just say ``we will stick with \code{SeqCst}.''?}
+\note{Threads, Processes, CAS, FA, Mutex, volatile, }
 
-
-Modern compilers and CPU's reorder instructions when it improves
-performance if they can prove that the end result is the same. In sequential
-code there is no way to notice the difference. Consider
-Listing~\ref{lst:reordering}, and assume variables are initialized to 0.
+We start the section with a motivating example of instruction reordering.
+Consider Listing~\ref{lst:reordering}, and assume variables are initialized to
+0.  When ran sequentially (first B and then A), we would observe no difference
+if the assignments of Thread B were reordered; the end result would be that we
+print \code{1}. However, when run concurrently thread B might decide to assign
+\code{f = 1} first, and thread A will risk printing \code{0} instead of
+\code{1}. This outcome was impossible in the sequential world.
 \begin{figure}[ht]
 \begin{lstlisting}[caption=Instruction reordering,label=lst:reordering]
 // Thread A                      // Thread B
@@ -305,15 +288,8 @@ print(x)                         f = 1
 \end{lstlisting}
 \end{figure}
 
-When ran sequentially (first B and then A), we would observe no difference if
-the assignments of Thread B were reordered; the end result would be that we
-print \code{1}. However, when run concurrently thread B might decide to assign
-\code{f = 1} first, and thread A will risk printing \code{0} instead of
-\code{1}. This outcode was impossible in the sequential world.
-
 A solution to this problem is to use a memory fence, in order to explicitly
 disallow any reordering past it, as in Listing~\ref{lst:mem-fence}.
-
 \begin{figure}[ht]
 \begin{lstlisting}[caption=Memory fence for synchronization,label=lst:mem-fence]
 // Thread A                      // Thread B
@@ -322,13 +298,36 @@ fence()                          fence()
 print(x)                         f = 1
 \end{lstlisting}
 \end{figure}
-However, fences are expensive. We would rather want to just make sure that
-there is an ordering relationship between \code{f} and \code{x}. We can obtain
-this by using \code{Acquire} and \code{Release} semantics on \code{f}, like in
+
+\todo{rewrite this sentence!}
+LLVM defines a memory model which is inspired by the C++11 memory
+model~\cite{llvmmm}. The model includes six memory ordering constraints,
+which are used in atomic operations. We look at five of them here:
+\code{monotonic}, \code{acquire}, \code{release}, \code{acq\_rel}, and
+\code{seq\_cst}.  \code{monotonic} is the weakest and offers no ordering
+constraints. Atomic operations with this ordering differs only from regular
+operations in that the operation cannot be observed to happen partially.
+\code{acquire} and \code{release} are intended to work in pairs, by loading with
+\code{acquire} and storing with \code{release} in the same memory location.
+\code{acquire} ensures that data written in between it and a \code{release}
+store on the same memory address is visible to other threads. This can be used
+to implement a lock, where we \code{acquire} the lock before the critical
+section, and \code{release} the lock after it. Now the operations inside the
+critical section are not allowed to be reordered out of it.  \code{acq\_rel} is
+the \code{release} ordering when used with a store, and \code{acquire} when used
+with a load. \code{seq\_cst} is similar to \code{acq\_rel}, but it also
+guarantees that all threads see all sequentially consistent operations is the
+same order.
+
+We can use these ordering constraints to improve our example. Fences are
+expensive, so we would rather want to just make sure that there is an ordering
+relationship between \code{f} and \code{x}. We can obtain this by using
+\code{Acquire} and \code{Release} semantics on \code{f}, like in
 Listing~\ref{lst:acqrel}. The \code{Release} in Thread B ensures that the
-assignment \code{x =1 } is not moved after the store to \code{f}, and the
+assignment \code{x = 1} is not moved after the store to \code{f}, and the
 \code{Acquire} load in Thread A ensures that the access to \code{x} is not moved
 above the load of \code{f}. This gives us the desired semantics.
+
 \begin{figure}[ht]
 \begin{lstlisting}[caption=Synchronization using orderings,label=lst:acqrel]
 // Thread A                      // Thread B
@@ -336,6 +335,25 @@ while f.load(Acquire) == 0 { }   x = 1
 print(x)                         f.store(1, Release)
 \end{lstlisting}
 \end{figure}
+
+\subsection{Concurrency in Rust}
+
+The Rust standard library contains multiple primitives for concurrency.
+\code{std::sync} contains types such as \code{Arc} (atomic reference counted
+smart pointer), \code{Condvar} (condition variable), \code{Mutex}, and
+\code{RwLock} (Read-Write lock). The \code{atomic} module contains atomic
+primitives (but only for \code{bool}, \code{isize}, \code{usize}, and
+\code{ptr}), and the \code{fence} function, which is a memory fence. All atomic
+operations including the memory fence take an \code{Ordering} as the last
+argument, which is the same memory orderings as LLVM uses (\code{monotonic} is
+renamed to \code{Ordering::Relaxed}).
+
+The \code{Mutex} is yet another example of a type that uses the RAII pattern.
+\code{Mutex::new} takes the value that the mutex is protecting, and
+\code{Mutex::lock} returns a new type, \code{MutexGuard}, which implements
+\code{Deref<T>} and which unlocks the mutex in \code{Drop}. Wrapping the data
+the mutex protects in the Mutex type makes it impossible to use the data without
+acquiring the lock.
 
 
 \section{The ABA Problem}
@@ -584,11 +602,11 @@ public functions are listed in Listing~\ref{lst:msqueue}. The implementation of
 \code{push} and \code{pop} is heavily inspired of the implementation from
 Crossbeam\cite{crossbeam-msqueue}. We support \code{pop\_if}, since we use this
 in the implementation of EBR. \code{push} allocates the memory needed for the
-node, which in microbenchmarks have been shown to take the majority of the time:
+node, which in micro benchmarks have been shown to take the majority of the time:
 allocation averaged at 54ns, while the rest of the procedure averaged at 30ns.
 A natural optimization of this problem is to allocate nodes from a memory arena
 or similar, such that the allocation overhead is amortized over multiple calls
-to \code{push}. However, this seriously increses the complexity of the memory
+to \code{push}. However, this seriously increases the complexity of the memory
 management schemes.
 
 \begin{figure}[ht]
@@ -623,7 +641,7 @@ values in the queue to be cleaned up correctly when the queue is destroyed.
 \note{how did we implement the list?}
 
 The list we have implemented is based on the list presented by Michael
-in~\cite{michael2002high}. The implementation is similiar to the Michael-Scott
+in~\cite{michael2002high}. The implementation is similar to the Michael-Scott
 Queue in multiple ways. For instance, we support a \code{remove\_front}
 operation, which is almost identical to \code{Queue::pop}. However, the default
 insertion operation of the List pushes the inserted element to the beginning of
@@ -719,7 +737,7 @@ memory that we want to free and the epoch when the memory was retired; and a
 list of thread markers, \code{List<ThreadMarker>}. This is all stored in the
 \code{GlobalState} struct. We use the third-party crate \code{lazy\_static}
 which contains a macro for lazy-initialized static variables. The thread local
-data is stored in the \code{LocalState} struct, and is initalized using the
+data is stored in the \code{LocalState} struct, and is initialized using the
 \code{thread\_local!} macro, which is in the Rust standard library. The thread
 local data is a pointer to the threads list entry, a counter of how many times
 the thread has been pinned, and buffered garbage.
@@ -733,9 +751,9 @@ pipeline. However, upon destruction we need to know the type of the data we are
 dropping. The way we have solved this is by moving the data to a closure, so
 that the closure keeps track of the type of the data. The closure is never
 invoked, but upon dropping the closure all of the values moved to it are
-dropped. A advanage of this solution is that it is simple to implement. A
-disadvantace is that the closure needs to be heap allocated, which increases the
-overhead of adding garbage.  \todo{implmeent tags or something, and profile?}
+dropped. A advantage of this solution is that it is simple to implement. A
+disadvantage is that the closure needs to be heap allocated, which increases the
+overhead of adding garbage.  \todo{implement tags or something, and profile?}
 
 We note that both the thread entry list and garbage queue themselves must be garbage
 collected, and that we use EBR on them. This poses a problem: for each
@@ -758,7 +776,7 @@ the memory reclamation. Having a closure also makes it very clear when the
 thread stops being pinned. Internally in the \code{ebr} module, there is a
 method called \code{Pin::fake}, which makes a pin without actually pinning the
 thread. This is an optimization used when we know that we have exclusive access
-on certain meomory.
+on certain memory.
 
 \begin{figure}[ht!]
 \begin{lstlisting}[caption=Example usage of the \code{pin} fucntion,
@@ -774,20 +792,20 @@ The \code{pin} function is also where we reclaim the memory. Before calling the
 closure passed in, we read the global epoch, and increment our local pin
 counter. Every $n$th call to \code{pin}, we try to increment the epoch. For
 incrementation to occur, all the pinned threads must have read the current
-epoch. If we succeed at incrementing the epoch we also free as much garbage as
+epoch.  If we succeed at incrementing the epoch we also free as much garbage as
 allowed from the global garbage list. This scheme is in a sense fair, in that
 threads that pin a lot supposedly create a lot of garbage, and these threads
 will also have to clean up once in a while. It does however suffer from the fact
 that a single thread is set to clean up all the garbage from other threads.
-\todo{As i'm writing this, I realize that this is a terrible idea. Should fix.}
+\todo{As I'm writing this, I realize that this is a terrible idea. Should fix.}
 
-The \code{Pin} struct contains a method for retiering garbage, aptly called
+The \code{Pin} struct contains a method for retiring garbage, aptly called
 \code{add\_garbage}. This method handles the thread local caching of garbage
 objects into a \code{Bag}, and pushes the bag with the current epoch into the
 global garbage queue when the bag is full. It does not support flushing the
 current \code{Bag} (that is, adding it to the global queue even when it is not
-full), although this is trivial to implement. \todo{What happends to garbage
-when a thread dies? Leak?} Typical useage of \code{add\_garbage} is to make a
+full), although this is trivial to implement. \todo{What happens to garbage
+when a thread dies? Leak?} Typical usage of \code{add\_garbage} is to make a
 node unreachable by its data structure, read the data needed from it, and then
 call \code{add\_garbage} with an \code{Owned<Node<T>>}.  \code{pin} and
 \code{Pin::add\_garbage} are the only two methods a user of EBR needs to use.
@@ -842,14 +860,14 @@ primer on writing tests in Rust.
 Testing were primarily done on the development machines of the author, which are
 all \code{x86} machines. \todo{add note on bugs on ARM, if any}
 
-The majority of the so-far found bugs in the sytsem is memory bugs. Use after
+The majority of the so-far found bugs in the system is memory bugs. Use after
 free bugs, double free bugs, illegal memory accesses, and memory leaks. Double
 frees and illegal memory accesses are usually hard faults, such that the
 programs execution stops, and we are notified that eg. \code{0x8} is indeed not
 a valid memory address to read from.
 
 Use after free bugs and memory leaks are more difficult to find. Here we found
-great use in Valgrind\cite{valgrind}, a instrumemtation framework, which
+great use in Valgrind\cite{valgrind}, a instrumentation framework, which
 contains the tool \code{memcheck}. \code{memcheck} intercepts all memory
 operations, tracks allocations and frees, and is able to report most, if not
 all, memory problems. One minor problem with using Valgrind with Rust is that
@@ -867,19 +885,19 @@ We compare the performance overhead of HP, EBR, and without any reclamation. We
 look at their performance implication when we operate on the queue and the list,
 as described in Section~\ref{sec:data-structures}. We start out by looking at
 the performance on a single threaded system, in order to get a notion of how how
-much overhead the schemes impose. Then we look at a larger multithreaded system,
+much overhead the schemes impose. Then we look at a larger multi threaded system,
 so see how well the schemes handle contention. \note{This sounds like a better
 fit for the Results chapter?}
 
 \note{Maybe we want to compare before and after comparisons after we have
 optimized the code a little? Look at ordering implications?}
 
-\subsection{Singlethreaded Benchmarks}
+\subsection{Single threaded Benchmarks}
 
 An interesting problem that turned up when benchmarking is the following: how do
 we benchmark the data structures that does not reclaim any memory? The problem
 is that the benchmarking system runs a loop an unspecified number of times, to
-make sure the results are statistically significant\note{this is probablyt not
+make sure the results are statistically significant\note{this is probably not
 the right word}. This means that we cannot directly control the number of nodes
 we allocate which we do not free, and we risk running out of memory. This causes
 the system to swap memory to disk, which destroys performance.
