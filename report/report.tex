@@ -41,17 +41,17 @@ lkajsd
 
 \chapter{Background}
 
-\note{I meant to write a quick intro on parallelism, and why we care Maybe this
+\note{I meant to write a quick intro on parallelism, and why we care. Maybe this
 this is out of scope?}
 In 1965 Gordon Moore stated what is now knows as \emph{Moore's Law}, which
 roughly states that the number of transistors on integrated circuits will
-double every 18 months The law has also been used to describe the clock speed
-of central processing units (CPU's) However, this exponential growth came to a
+double every 18 months. The law has also been used to describe the clock speed
+of central processing units (CPU's). However, this exponential growth came to a
 halt during the 2000s, where the clock speed of CPUs stopped between 3 GHz and
 4 GHz Over 10 years later high end consumer CPUs still have a clock speed in
 that same range, and the performance increase of modern CPUs has mainly been
-due to increase in parallelism\note{has it, though Or is it more that CPUs
-hasn't really improved that much?} This improvement however, has not been as
+due to increase in parallelism\note{has it, though? Or is it more that CPUs
+hasn't really improved that much?}. This improvement however, has not been as
 noticeable as the former improvements in clock speed. This is because programs
 already written cannot automatically use the extra parallelism that newer
 architectures give us; Parallelism needs to be accounted for by programmers.
@@ -59,7 +59,7 @@ architectures give us; Parallelism needs to be accounted for by programmers.
 \note{fix this. It reads alright on its own, but the previous paragraph ends
 with the same thing, making it very weird to read.}
 Despite having multi-core architectures as the most central performance
-improvement in CPUs, parallelism is not a success story for programmers Most
+improvement in CPUs, parallelism is not a success story for programmers. Most
 mainstream programming languages does not have first class support for parallel
 constructs, and synchronization and work management\note{?} must still be
 handled explicitly by the programmer, using fairly low level constructs, such
@@ -70,8 +70,8 @@ improving the performance of programs written by having CMR in Rust?}
 In short, parallelism has yet to be approachable for a lot of programmers.
 \note{If we are going to complain on the state of parallel programming we
 should at least mention some alternatives.}
-\note{Parallelism isn't a success story for programmers Hard, error-prone,
-even simple things goes wrong Need effective abstractions to improve this.??}
+\note{Parallelism isn't a success story for programmers. Hard, error-prone,
+even simple things goes wrong. Need effective abstractions to improve this.??}
 
 
 \subsection*{\note{TODO LIST}}
@@ -86,11 +86,11 @@ Consider adding MS queue or something to show pitfalls in concurrent programming
 }
 
 \section{Terminology}
-We start with basic terminology of memory management Most of the programs we
+We start with basic terminology of memory management. Most of the programs we
 write \emph{allocate} memory, meaning requesting a memory range from the OS for
-exclusive use by the program This memory is then \emph{deallocated}, or
+exclusive use by the program. This memory is then \emph{deallocated}, or
 \emph{freed}, when we are done with it, so that the memory may be used at a
-later time; the memory is thus \emph{reclaimed} If we want to ``mark'' memory
+later time; the memory is thus \emph{reclaimed}. If we want to ``mark'' memory
 as freed without freeing it (that is, the program still has exclusive use of
 it) we say we \emph{retire} the memory (reasons for doing so will become
 apparent). In concurrent settings, we risk accessing memory at the same time; a
@@ -131,7 +131,7 @@ The Rust Programming Language\cite{trpl}.
 
 As C++, Rust has structs. It does not however have classes or inheritance. The
 type system is based around \emph{traits}, which are comparable to interfaces in
-Java. A Trait defines methods optionally with an implementation. We can then
+Java. A trait defines methods, optionally with an implementation. We can then
 \emph{implement} the trait for a struct. Implementing a trait for a struct
 requires that either the trait of the struct is defined in the \emph{crate} the
 implementation is in. A consequence of this is that it is possbile to extend
@@ -677,10 +677,10 @@ have removed two items: B and X.
   \end{subfigure}
   \caption{List removal which removes two elements when there is a concurrent
   insertion. This happens because the \code{compare-and-swap} operation
-  performed on \code{A.next} is succeeds since the previous value is not changed.
-  However, the new value is logically changed, although there is no way for the
-\code{CAS} to detect that.\label{fig:list-remove}}
-\end{figure}
+  performed on \code{A.next} is succeeds since the previous value is not
+  changed.  However, the new value is logically changed, since C is no longer
+  the \code{next} value of B, although there is no way for the \code{CAS} to
+  detect that.\label{fig:list-remove}} \end{figure}
 
 Our solution to this problem is simple and effective: we \emph{tag} the node we
 want to remove, such that other threads do not add a new node after it. We
@@ -950,7 +950,10 @@ What alternatives exists?}
   build options such as optimization levels, debug levels, optional flags;
   and dependencies, with versioning and optional flags.
   The initial \code{Cargo.toml} may look like Listing~\ref{lst:cargo.toml}.
-  \begin{figure}[ht]
+  The other file, \code{src/main.rs} contains the entry point of the program, as
+  in Listing~\ref{lst:hello-world}.
+
+  \begin{figure}[p]
   \begin{lstlisting}[language=,basicstyle=\footnotesize\ttfamily,label=lst:cargo.toml,
   caption=A newly generated \code{Cargo.toml}]
 [package]
@@ -961,14 +964,17 @@ authors = ["Martin Hafskjold Thoresen <martinhath@gmail.com>"]
 [dependencies]
   \end{lstlisting}
 \end{figure}
-  The other file, \code{src/main.rs} contains the entry point of the program:
-  \begin{lstlisting}
+
+\begin{figure}[p]
+  \begin{lstlisting}[caption=Hello World in Rust,label=lst:hello-world]
 fn main() {
     println!("Hello, world!");
 }
   \end{lstlisting}
+\end{figure}
 
   To run the program, we use \cargo{}:
+
   \begin{figure}[ht]
   \begin{lstlisting}[language=Bash,numbers=none]
 % cargo run
