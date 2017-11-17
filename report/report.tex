@@ -276,7 +276,7 @@ be ignored? (no)}
 We start the section with a motivating example of instruction reordering.
 Consider Listing~\ref{lst:reordering}, and assume variables are initialized to
 0.  When ran sequentially (first B and then A), we would observe no difference
-if the assignments of Thread B were reordered; the end result would be that we
+if the assignments of thread B were reordered; the end result would be that we
 print \code{1}. However, when run concurrently thread B might decide to assign
 \code{f = 1} first, and thread A will risk printing \code{0} instead of
 \code{1}. This outcome was impossible in the sequential world.
@@ -299,22 +299,25 @@ print(x)                         f = 1
 \end{lstlisting}
 \end{figure}
 
-\todo{rewrite this sentence!}
 LLVM defines a memory model which is inspired by the C++11 memory
-model~\cite{llvmmm}. The model includes six memory ordering constraints,
-which are used in atomic operations. We look at five of them here:
-\code{monotonic}, \code{acquire}, \code{release}, \code{acq\_rel}, and
-\code{seq\_cst}.  \code{monotonic} is the weakest and offers no ordering
-constraints. Atomic operations with this ordering differs only from regular
-operations in that the operation cannot be observed to happen partially.
-\code{acquire} and \code{release} are intended to work in pairs, by loading with
-\code{acquire} and storing with \code{release} in the same memory location.
-\code{acquire} ensures that data written in between it and a \code{release}
-store on the same memory address is visible to other threads. This can be used
-to implement a lock, where we \code{acquire} the lock before the critical
-section, and \code{release} the lock after it. Now the operations inside the
-critical section are not allowed to be reordered out of it.  \code{acq\_rel} is
-the \code{release} ordering when used with a store, and \code{acquire} when used
+model~\cite{llvmmm}. The model includes six \emph{memory ordering constraints},
+which are used in atomic operations. The orderings dictates how the compiler and
+the CPU is allowed to reorder the instructions around operations the orderings
+are used on.  We look at five of them here: \code{monotonic}, \code{acquire},
+\code{release}, \code{acq\_rel}, and \code{seq\_cst}.  \code{monotonic} is the
+weakest and offers no ordering constraints. Atomic operations with this ordering
+differs only from regular operations in that the operation cannot be observed to
+happen partially.  \code{acquire} and \code{release} are intended to work in
+pairs, by loading with \code{acquire} and storing with \code{release} in the
+same memory location.  An \code{acquire} load of X ensures that subsequent loads
+will see all stores that happend before a \code{release} store to X.  This can
+be used to implement a lock, where we \code{acquire} the lock before the
+critical section, and \code{release} the lock after it.  Now we get the
+guarantee that two critical sections cannot overlap, since the stores before the
+\code{realease} in the first section must be visible upon the \code{acquire}
+load of the second. Note that operations \emph{are} allowed to be moved from the
+outside to the inside of the critical section. \code{acq\_rel} is the
+\code{release} ordering when used with a store, and \code{acquire} when used
 with a load. \code{seq\_cst} is similar to \code{acq\_rel}, but it also
 guarantees that all threads see all sequentially consistent operations is the
 same order.
@@ -323,9 +326,9 @@ We can use these ordering constraints to improve our example. Fences are
 expensive, so we would rather want to just make sure that there is an ordering
 relationship between \code{f} and \code{x}. We can obtain this by using
 \code{Acquire} and \code{Release} semantics on \code{f}, like in
-Listing~\ref{lst:acqrel}. The \code{Release} in Thread B ensures that the
+Listing~\ref{lst:acqrel}. The \code{Release} in thread B ensures that the
 assignment \code{x = 1} is not moved after the store to \code{f}, and the
-\code{Acquire} load in Thread A ensures that the access to \code{x} is not moved
+\code{Acquire} load in thread A ensures that the access to \code{x} is not moved
 above the load of \code{f}. This gives us the desired semantics.
 
 \begin{figure}[ht]
@@ -341,12 +344,19 @@ print(x)                         f.store(1, Release)
 The Rust standard library contains multiple primitives for concurrency.
 \code{std::sync} contains types such as \code{Arc} (atomic reference counted
 smart pointer), \code{Condvar} (condition variable), \code{Mutex}, and
-\code{RwLock} (Read-Write lock). The \code{atomic} module contains atomic
-primitives (but only for \code{bool}, \code{isize}, \code{usize}, and
+\code{RwLock} (Read-Write lock). The \code{std::sync::atomic} module contains
+atomic primitives (but only for \code{bool}, \code{isize}, \code{usize}, and
 \code{ptr}), and the \code{fence} function, which is a memory fence. All atomic
 operations including the memory fence take an \code{Ordering} as the last
 argument, which is the same memory orderings as LLVM uses (\code{monotonic} is
 renamed to \code{Ordering::Relaxed}).
+
+As seen in Section~\ref{sec:rust} Rust forbids on shared mutability, but atomic
+are made for shared mutability. For this reason, the functions on the atomic
+types does not take \code{\&mut self}, but \code{\&self}, even though the
+operation do mutate the value. This is an example of a case where we use
+\code{\&mut} and \code{\&} not to signal mutability, but to signal whether it
+is safe to perform the operation concurrently on multiple threads.
 
 The \code{Mutex} is yet another example of a type that uses the RAII pattern.
 \code{Mutex::new} takes the value that the mutex is protecting, and
@@ -356,15 +366,34 @@ the mutex protects in the Mutex type makes it impossible to use the data without
 acquiring the lock.
 
 
-\section{The ABA Problem}
+\section{The ABA Problem\label{sec:aba}}
+
 The ABA problem is one of the most known problems in concurrent programming,
-especially within the topic of memory reclamation.
-\note{explain what this is about, why it's relevant to MR.}
+especially within the topic of memory reclamation. An intuition for the problem
+can be explained as reading a location twice and observing no change, but that
+there is a logical change in the program structure. A classical example is when
+thread A is reading the address of a nodes \code{next} field, and then gets
+preempted. In the meantime, thread B removes that \code{next} node, reclaims its
+memory, and reuses the same memory for a logically different node, which it
+places in the same place in the structure as the first node. When thread A now
+continues execution, it observes no change, as the address of the \code{next}
+node is the same. However, logically the node thread A still thinks is present
+is long gone.
+
+There is no one good solution to the ABA problem, but most instances of the
+problem are managable. Solution ideas include \emph{tagging}, in which we tag
+the value swapped such that the second reading observes a change in tag;
+\emph{indirection} in which we use an intermediate node, such that the
+intermediate node changes, while the data node is still not observed to have
+changed; and \emph{deferred reclamation} where we wait for ``safe periods'' in
+which we know that ABA problems cannot occur. In the following chapter we look
+at reclamation schemes which utilizes all three of these solution ideas.
 
 
-\chapter{Memory Reclamation}
-\note{What is memory reclamation? Why is it hard? What approaches are there?}
-\note{Assumed background: had OS, have programmed in C or C++.}
+
+\chapter{Memory Reclamation} \note{What is memory reclamation? Why is it hard?
+What approaches are there?} \note{Assumed background: had OS, have programmed in
+C or C++.}
 
 When programming we lend memory from the operating system. This memory must be
 returned, or else we will sooner or later run out of it. In most modern
@@ -637,7 +666,7 @@ also makes it possible to \emph{do} drop the data. This is used in the
 \code{Drop} implementation of the \code{Queue} itself, since we would like the
 values in the queue to be cleaned up correctly when the queue is destroyed.
 
-\subsubsection{List}
+\subsubsection{List\label{sec:impl-list}}
 \note{how did we implement the list?}
 
 The list we have implemented is based on the list presented by Michael
@@ -652,7 +681,8 @@ procedure complicates the implementation: consider the list in
 Figure~\ref{fig:list-remove}. We want to remove node B, so we swing
 \code{A.next} from B to C. However, at the same time, a thread might insert a
 new node X in between B and C. When we now change \code{A.next} to \code{C}, we
-have removed two items: B and X.
+have removed two items: B and X. This is an example of the ABA problem, which we
+saw in Section~\ref{sec:aba}.
 
 \begin{figure}[ht]
   \begin{subfigure}[b]{\textwidth}
