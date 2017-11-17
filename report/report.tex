@@ -107,8 +107,9 @@ was defined by Leslie Lamport in 1979\todo{source here}. We call a system in
 which threads can be prevented from making progress \emph{blocking}. The
 opposite of blocking is \emph{non-blocking}. A method is \emph{lock-free} if we
 have a guarantee that \emph{some} thread will make progress. Note that any given
-thread may be blocked for an infinite amount of time. For a more thorough
-introduction see~\cite{herlihy2011art}.
+thread may be blocked for an infinite amount of time. The guarantee that any
+given thread will eventually make progress is called \emph{wait-freedom}.  For a
+more thorough introduction see~\cite{herlihy2011art}.
 
 
 \note{parallel vs concurrent?}
@@ -391,27 +392,28 @@ at reclamation schemes which utilizes all three of these solution ideas.
 
 
 
-\chapter{Memory Reclamation} \note{What is memory reclamation? Why is it hard?
-What approaches are there?} \note{Assumed background: had OS, have programmed in
-C or C++.}
+\chapter{Memory Reclamation}
 
-When programming we lend memory from the operating system. This memory must be
-returned, or else we will sooner or later run out of it. In most modern
-programming languages, this is a feature provided by the runtime of the
-language. We call such languages \emph{managed languages}. However, in
-languages such as Rust, there is virtually no runtime, so this becomes a
-concern of the programmer Garbage collection is typically the name used for
-memory reclamation; if we want to pedantic we would say a garbage collector
-performs memory reclamation.
+\note{What is memory reclamation? Why is it hard?  What approaches are there?}
+\note{Assumed background: had OS, have programmed in C or C++.}
 
-In a concurrent setting, we are concerned about the properties of our data
-structures, \todo{define this} such as wait-freedom, or lock-freedom.
-\todo{rewrite this sentence}. One can make the claim that data structures
-implemented in managed languages can never obtain some of these properties,
-since they depend on the runtime to get execution time in order for the program
-to be able to allocate memory. Hence, the runtime thread has to get CPU time
-in order for the program to make progress \note{Could say this better; the
-point is to motivate the usage of Rust.}
+% When programming we lend memory from the operating system. This memory must be
+% returned, or else we will sooner or later run out of it. In most modern
+% programming languages, this is a feature provided by the runtime of the
+% language. We call such languages \emph{managed languages}. However, in
+% languages such as Rust, there is virtually no runtime, so this becomes a
+% concern of the programmer Garbage collection is typically the name used for
+% memory reclamation; if we want to pedantic we would say a garbage collector
+% performs memory reclamation.
+%
+% In a concurrent setting, we are concerned about the properties of our data
+% structures, such as wait-freedom, or lock-freedom.
+% \todo{rewrite this sentence}. One can make the claim that data structures
+% implemented in managed languages can never obtain some of these properties,
+% since they depend on the runtime to get execution time in order for the program
+% to be able to allocate memory. Hence, the runtime thread has to get CPU time
+% in order for the program to make progress \note{Could say this better; the
+% point is to motivate the usage of Rust.}
 
 The field of concurrent memory reclamation is an active one, and a lot of
 different schemes have emerged the recent years. We will look at
