@@ -370,25 +370,41 @@ acquiring the lock.
 \section{The ABA Problem\label{sec:aba}}
 
 The ABA problem is one of the most known problems in concurrent programming,
-especially within the topic of memory reclamation. An intuition for the problem
-can be explained as reading a location twice and observing no change, but that
-there is a logical change in the program structure. A classical example is when
-thread A is reading the address of a nodes \code{next} field, and then gets
-preempted. In the meantime, thread B removes that \code{next} node, reclaims its
-memory, and reuses the same memory for a logically different node, which it
-places in the same place in the structure as the first node. When thread A now
-continues execution, it observes no change, as the address of the \code{next}
-node is the same. However, logically the node thread A still thinks is present
-is long gone.
+especially within the topic of memory reclamation. The essence of the problem is
+that there are logical changes to a structure that we cannot observe due to
+hardware limitations. For instance we might read a memory location twice,
+observing no change in the memory read. We might then conclude that no change
+has taken place. This conclusion however, might not be valid.
 
-There is no one good solution to the ABA problem, but most instances of the
-problem are managable. Solution ideas include \emph{tagging}, in which we tag
-the value swapped such that the second reading observes a change in tag;
-\emph{indirection} in which we use an intermediate node, such that the
-intermediate node changes, while the data node is still not observed to have
-changed; and \emph{deferred reclamation} where we wait for ``safe periods'' in
-which we know that ABA problems cannot occur. In the following chapter we look
-at reclamation schemes which utilizes all three of these solution ideas.
+Consider the following real world analogy: assume you have a opaque bottle that
+is filled with water. If you leave the bottle somewhere and return to it after
+some time there is no way to see whether anyone has been drinking your water, by
+simply inspecting the bottle itself. Someone might have taken the bottle, drunk
+the water, and put the bottle back as it were. Even worse, someone might have
+replaced your bottle with an identical bottle filled with snakes.
+
+An more relevant example is in lock-free lists. Consider a linked list, where
+nodes have a \code{next} pointer to the next element in the list.  By reading
+the \code{next} field on a node twice at times $t_0$ and $t_1$, we might
+conclude that the next node is the same. However, the node at $t_0$ may have
+been removed from the list, its memory reclamed for a new node, which is then
+inserted at the same place before $t_1$. This can be disasterous if we read the
+\code{next} field of the node at $t_0$, for instance if we are trying to remove
+the node.
+
+\todo{x86 only has CAS. it seems no arch has LL/SC 10/10 impl. But armv7 and 8
+has something, so maybe we should try that? Or just say, rust doesn't support
+it, and inline asm = :(, so future work?}
+
+Without propper hardware support there is no one good solution to the ABA
+problem, but most instances of the problem are managable. Solution ideas include
+\emph{tagging}, in which we tag the value swapped such that the second reading
+observes a change in tag; \emph{indirection} in which we use an intermediate
+node, such that the intermediate node changes, while the data node is still not
+observed to have changed; and \emph{deferred reclamation} where we wait for
+``safe periods'' in which we know that ABA problems cannot occur. In the
+following chapter we look at reclamation schemes which utilizes all three of
+these solution ideas.
 
 
 
