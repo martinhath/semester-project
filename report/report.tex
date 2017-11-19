@@ -392,9 +392,22 @@ inserted at the same place before $t_1$. This can be disasterous if we read the
 \code{next} field of the node at $t_0$, for instance if we are trying to remove
 the node.
 
-\todo{x86 only has CAS. it seems no arch has LL/SC 10/10 impl. But armv7 and 8
-has something, so maybe we should try that? Or just say, rust doesn't support
-it, and inline asm = :(, so future work?}
+Instances of the ABA problem is easily prevented if we have atomic operations
+that can check for change in the memory, even if it is changed back to the
+initial state. An example of such operations are the \code{load-link} and
+\code{store-conditional} instructions (\code{LL/SC}). The \code{SC} instruction
+will only store a new value if the memory has not been written to after read by
+\code{LL}. Current implementations on \code{LL/SC} are \emph{weak}, in the sense
+that the store may fail even though it is never touched, but when another value
+on the same cache line is written to. Architectures supporing \code{LL/SC}
+include ARM, PowerPC, and RISC-V.
+
+Another instruction that helps with the ABA problem is double compare-and-swap,
+or \code{DCAS}, which is a two \code{CAS} operations that both must succeed for
+any value to be updated. \code{DCAS} is not supported by any architecture. We
+note that this is a different operation than double \emph{word} compare-and-swap
+(\code{DWCAS}), which is a regular \code{CAS} that writes values that are double
+words.
 
 Without propper hardware support there is no one good solution to the ABA
 problem, but most instances of the problem are managable. Solution ideas include
