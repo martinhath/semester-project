@@ -10,7 +10,15 @@
 \usepackage{tikz}
 \usepackage{hyperref}
 \usepackage{parskip}
-\usetikzlibrary{positioning,shapes,decorations,calc}
+\usetikzlibrary{positioning,shapes,decorations,calc,fit,arrows.meta}
+
+\usepackage{libertine}
+\usepackage{inconsolata}
+\usepackage{libertinust1math}
+\usepackage[T1]{fontenc}
+\definecolor{font}{RGB}{40, 40, 40}
+% TODO: remove
+\color{font}
 
 \begin{document}
 \title{Concurrent Memory Reclamation on ARM}
@@ -31,13 +39,11 @@
   Queues, Lists, and (probably not) Skip-Lists, on the ARM platform.
 \end{abstract}
 
+\tableofcontents
+
 \chapter{Introduction}
 \note{Outline: parallelism, garbage collection, what we are about to do,
 rust, performance, usability}
-
-lkajsd
-
-\tableofcontents
 
 \chapter{Background}
 
@@ -719,32 +725,32 @@ saw in Section~\ref{sec:aba}.
   \begin{subfigure}[b]{\textwidth}
       \centering
       \begin{tikzpicture}
-        \node [lnode,label={A}] (A)              {\code{data} \nodepart{second} \code{next}};
-        \node [lnode,label={B}] (B) [right of=A] {\code{data} \nodepart{second} \code{next}};
-        \node [lnode,label={C}] (C) [right of=B] {\code{data} \nodepart{second} \code{next}};
+        \node [lnode,label={A}] (A)              {\code{data} \nodepart{second} \code{}};
+        \node [lnode,label={B}] (B) [right of=A] {\code{data} \nodepart{second} \code{}};
+        \node [lnode,label={C}] (C) [right of=B] {\code{data} \nodepart{second} \code{}};
         \draw[-latex] ($ (A.west) - (0.5,0) $) -- (A.west);
-        \draw[-latex] (A.east) -- (B.west);
-        \draw[-latex] (B.east) -- (C.west);
-        \draw[-latex] (C.east) -- ($ (C.east) + (0.5, 0) $);
+        \draw[ptr] ($ (A.east) - (0.25,0) $) -- (B.west);
+        \draw[ptr] ($ (B.east) - (0.25,0) $) -- (C.west);
+        \draw[ptr] ($ (C.east) - (0.25,0) $) -- ($ (C.east) + (0.5, 0) $);
         \draw[-latex,color=lightgray] ($ (A.north) + (0.5,0) $) to[out=45,in=135] ($ (C.north) -
           (0.5, 0) $);
       \end{tikzpicture}
-      \caption{The initial list. When removing B we swing the \code{next}
+      \caption{The initial list. When removing B we swing the \code{}
       pointer over to C.\label{fig:list-remove-a}}
   \end{subfigure}
 
   \begin{subfigure}[b]{\textwidth}
       \centering
       \begin{tikzpicture}
-        \node [lnode,label={A}] (A)              {\code{data} \nodepart{second} \code{next}};
-        \node [lnode,label={B}] (B) [right of=A] {\code{data} \nodepart{second} \code{next}};
-        \node [lnode,label={X}] (X) [right of=B] {\code{data} \nodepart{second} \code{next}};
-        \node [lnode,label={C}] (C) [right of=X] {\code{data} \nodepart{second} \code{next}};
+        \node [lnode,label={A}] (A)              {\code{data} \nodepart{second} \code{}};
+        \node [lnode,label={B}] (B) [right of=A] {\code{data} \nodepart{second} \code{}};
+        \node [lnode,label={X}] (X) [right of=B] {\code{data} \nodepart{second} \code{}};
+        \node [lnode,label={C}] (C) [right of=X] {\code{data} \nodepart{second} \code{}};
         \draw[-latex] ($ (A.west) - (0.5,0) $) -- (A.west);
-        \draw[-latex] (A.east) -- (B.west);
-        \draw[-latex] (B.east) -- (X.west);
-        \draw[-latex] (X.east) -- (C.west);
-        \draw[-latex] (C.east) -- ($ (C.east) + (0.5, 0) $);
+        \draw[ptr] ($ (A.east) - (0.25,0) $) -- (B.west);
+        \draw[ptr] ($ (B.east) - (0.25,0) $) -- (X.west);
+        \draw[ptr] ($ (X.east) - (0.25,0) $) -- (C.west);
+        \draw[ptr] ($ (C.east) - (0.25,0) $) -- ($ (C.east) + (0.5, 0) $);
         \draw[-latex,color=lightgray] ($ (A.north) + (0.5,0) $) to[out=45,in=135] ($ (C.north) -
           (0.5, 0) $);
       \end{tikzpicture}
@@ -754,19 +760,19 @@ saw in Section~\ref{sec:aba}.
   \begin{subfigure}[b]{\textwidth}
       \centering
       \begin{tikzpicture}
-        \node [lnode,label={A}] (A)              {\code{data} \nodepart{second} \code{next}};
-        \node [lnode,label={\color{lightgray}B},color=lightgray] (B) [right of=A] {\code{data} \nodepart{second} \code{next}};
-        \node [lnode,label={\color{lightgray}X},color=lightgray] (X) [right of=B] {\code{data} \nodepart{second} \code{next}};
-        \node [lnode,label={C}] (C) [right of=X] {\code{data} \nodepart{second} \code{next}};
+        \node [lnode,label={A}] (A)              {\code{data} \nodepart{second} \code{}};
+        \node [lnode,label={\color{lightgray}B},color=lightgray] (B) [right of=A] {\code{data} \nodepart{second} \code{}};
+        \node [lnode,label={\color{lightgray}X},color=lightgray] (X) [right of=B] {\code{data} \nodepart{second} \code{}};
+        \node [lnode,label={C}] (C) [right of=X] {\code{data} \nodepart{second} \code{}};
         \draw[-latex] ($ (A.west) - (0.5,0) $) -- (A.west);
-        \draw[-latex,color=lightgray] (B.east) -- (X.west);
-        \draw[-latex,color=lightgray] (X.east) -- (C.west);
-        \draw[-latex] (C.east) -- ($ (C.east) + (0.5, 0) $);
-        \draw[-latex] ($ (A.north) + (0.5,0) $) to[out=45,in=135] ($ (C.north) -
+        \draw[ptr-g,color=lightgray] ($ (B.east) - (0.25,0) $) -- (X.west);
+        \draw[ptr-g,color=lightgray] ($ (X.east) - (0.25,0) $) -- (C.west);
+        \draw[ptr] ($ (C.east) - (0.25,0) $) -- ($ (C.east) + (0.5, 0) $);
+        \draw[ptr] ($ (A.north) + (0.37,-0.26) $) to[out=45,in=135] ($ (C.north) -
           (0.5, 0) $);
       \end{tikzpicture}
       \caption{End result. B and X is no longer reachable from the head of the
-        list. \label{fig:list-remove-b}}
+        list.\label{fig:list-remove-b}}
   \end{subfigure}
   \caption{List removal which removes two elements when there is a concurrent
   insertion. This happens because the \code{compare-and-swap} operation
@@ -815,6 +821,105 @@ invoked, but upon dropping the closure all of the values moved to it are
 dropped. A advantage of this solution is that it is simple to implement. A
 disadvantage is that the closure needs to be heap allocated, which increases the
 overhead of adding garbage.  \todo{implement tags or something, and profile?}
+
+\begin{figure}[ht]
+  \begin{tikzpicture}[
+    ntitle/.style={node distance=1cm, font=\normalsize},
+    ]
+    \node (global-title) [anchor=west] {\large{Global State}};
+
+    \node [ntitle] (epoch-title) [below=of global-title.west, anchor=west] {Epoch:
+      \code{AtomicUsize}};
+    \node [block,node distance=0.7cm]  (epoch-fig)  [below=of epoch-title.west, anchor=west] {12};
+    \node [draw=black!30, fit={(epoch-title) (epoch-fig)}]
+      (epoch-box) {};
+
+    \node [ntitle, node distance=0.5cm] (pins-title) [right=of epoch-title.east, anchor=west]
+      {Thread Pin List: \code{List<ThreadPinMarker>}};
+    {%
+      \node [lnode,node distance=0.7cm]  (pins-f-a)  [below=of pins-title.west,
+        anchor=west] {\code{marker} \nodepart{second} };
+        \node [lnode,node distance=0.7cm]  (pins-f-b)  [right=of pins-f-a]
+          {\code{marker} \nodepart{second} };
+        \node [lnode,node distance=0.7cm]  (pins-f-c)  [right=of pins-f-b]
+          {\code{marker} \nodepart{second} };
+
+      \draw[ptr] ($ (pins-f-a.east) - (0.2,0) $) -- (pins-f-b.west);
+      \draw[ptr] ($ (pins-f-b.east) - (0.2,0) $) -- (pins-f-c.west);
+    }
+    \node [draw=black!30, fit={(pins-title) (pins-f-c)}] (pins-box) {};
+
+    \node [ntitle, node distance=1.2cm] (garbage-title) [below=of epoch-fig.west, anchor=west]
+      {Garbage Queue: \code{Queue<(usize, Bag)>}};
+    {%
+      \node [lnode,node distance=.7cm]  (garbage-f-a)  [below=of garbage-title.west,
+        anchor=west] {\code{(10, bag)} \nodepart{second} };
+        \node [lnode,node distance=0.7cm]  (garbage-f-b)  [right=of garbage-f-a]
+          {\code{(10, bag)} \nodepart{second} };
+        \node [lnode,node distance=0.7cm]  (garbage-f-c)  [right=of garbage-f-b]
+          {\code{(11, bag)} \nodepart{second} };
+        \node [lnode,node distance=0.7cm]  (garbage-f-d)  [right=of garbage-f-c]
+          {\code{(12, bag)} \nodepart{second} };
+
+      \draw[ptr] ($ (garbage-f-a.east) - (0.25,0) $) -- (garbage-f-b.west);
+      \draw[ptr] ($ (garbage-f-b.east) - (0.25,0) $) -- (garbage-f-c.west);
+      \draw[ptr] ($ (garbage-f-c.east) - (0.25,0) $) -- (garbage-f-d.west);
+    }
+    \node [draw=black!30, fit={(garbage-title) (garbage-f-d)}] (garbage-box) {};
+
+    \node [draw=black, dotted, fit={(global-title) (pins-box) (garbage-box)}]
+      (global-box) {};
+
+
+    \node (local-title) [anchor=west, below=of garbage-f-a, shift={(0.10,0)}]
+      {\large{Local State}};
+
+    \node [ntitle] (epoch-title) [below=of local-title.west, anchor=west] {Epoch:
+      \code{AtomicUsize}};
+    \node [block,node distance=0.7cm]  (epoch-fig)  [below=of epoch-title.west, anchor=west] {12};
+    \node [draw=black!30, fit={(epoch-title) (epoch-fig)}]
+      (epoch-box) {};
+
+    \node [ntitle, node distance=0.5cm] (pins-title) [right=of epoch-title.east, anchor=west]
+      {Thread Pin List: \code{List<ThreadPinMarker>}};
+    {%
+      \node [lnode,node distance=0.7cm]  (pins-f-a)  [below=of pins-title.west,
+        anchor=west] {\code{marker} \nodepart{second} };
+        \node [lnode,node distance=0.7cm]  (pins-f-b)  [right=of pins-f-a]
+          {\code{marker} \nodepart{second} };
+        \node [lnode,node distance=0.7cm]  (pins-f-c)  [right=of pins-f-b]
+          {\code{marker} \nodepart{second} };
+
+      \draw[ptr] ($ (pins-f-a.east) - (0.2,0) $) -- (pins-f-b.west);
+      \draw[ptr] ($ (pins-f-b.east) - (0.2,0) $) -- (pins-f-c.west);
+    }
+    \node [draw=black!30, fit={(pins-title) (pins-f-c)}] (pins-box) {};
+
+    \node [ntitle, node distance=1.2cm] (garbage-title) [below=of epoch-fig.west, anchor=west]
+      {Garbage Queue: \code{Queue<(usize, Bag)>}};
+    {%
+      \node [lnode,node distance=.7cm]  (garbage-f-a)  [below=of garbage-title.west,
+        anchor=west] {\code{(10, bag)} \nodepart{second} };
+        \node [lnode,node distance=0.7cm]  (garbage-f-b)  [right=of garbage-f-a]
+          {\code{(10, bag)} \nodepart{second} };
+        \node [lnode,node distance=0.7cm]  (garbage-f-c)  [right=of garbage-f-b]
+          {\code{(11, bag)} \nodepart{second} };
+        \node [lnode,node distance=0.7cm]  (garbage-f-d)  [right=of garbage-f-c]
+          {\code{(12, bag)} \nodepart{second} };
+
+      \draw[ptr] ($ (garbage-f-a.east) - (0.25,0) $) -- (garbage-f-b.west);
+      \draw[ptr] ($ (garbage-f-b.east) - (0.25,0) $) -- (garbage-f-c.west);
+      \draw[ptr] ($ (garbage-f-c.east) - (0.25,0) $) -- (garbage-f-d.west);
+    }
+    \node [draw=black!30, fit={(garbage-title) (garbage-f-d)}] (garbage-box) {};
+
+    \node [anchor=west, draw=black, dotted, fit={(local-title) (pins-box) (garbage-box)}]
+      (local-box) {};
+
+  \end{tikzpicture}
+  \caption{The global and thread local data for the implemented EBR
+  scheme.\label{fig:ebr-impl}}
+\end{figure}
 
 We note that both the thread entry list and garbage queue themselves must be garbage
 collected, and that we use EBR on them. This poses a problem: for each

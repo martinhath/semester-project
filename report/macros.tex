@@ -6,8 +6,15 @@
 \newcommand{\cargo}{\code{cargo}}
 \newcommand{\rustup}{\code{rustup}}
 
-\tikzset{node distance = 2.5cm, auto, lnode/.style={rectangle split, rectangle
-split horizontal, rectangle split parts=2, draw, rounded corners=0.05cm }}
+\tikzset{auto}
+\tikzset{lnode/.style={node distance=2.5cm, rectangle split, rectangle
+split horizontal, rectangle split parts=2, draw, rounded
+corners=0.05cm,font=\footnotesize }}
+\tikzset{block/.style={regular polygon, regular polygon sides=4, draw, rounded
+corners=0.02cm, font=\footnotesize}}
+\tikzset{text/.style={regular polygon, regular polygon sides=4 }}
+\tikzset{ptr/.style={{Circle[black, length=3pt]}-latex}}
+\tikzset{ptr-g/.style={{Circle[lightgray, length=3pt]}-latex}}
 
 \lstset{ %
  backgroundcolor=\color{white}, % choose the background color; you must add \usepackage{color} or \usepackage{xcolor}; should come as last argument
