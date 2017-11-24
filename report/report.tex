@@ -16,9 +16,9 @@
 \usepackage{inconsolata}
 \usepackage{libertinust1math}
 \usepackage[T1]{fontenc}
-\definecolor{font}{RGB}{40, 40, 40}
+% \definecolor{font}{RGB}{40, 40, 40}
 % TODO: remove
-\color{font}
+% \color{font}
 
 \begin{document}
 \title{Concurrent Memory Reclamation on ARM}
@@ -822,11 +822,9 @@ dropped. A advantage of this solution is that it is simple to implement. A
 disadvantage is that the closure needs to be heap allocated, which increases the
 overhead of adding garbage.  \todo{implement tags or something, and profile?}
 
-\begin{figure}[ht]
-  \begin{tikzpicture}[
-    ntitle/.style={node distance=1cm, font=\normalsize},
-    ]
-    \node (global-title) [anchor=west] {\large{Global State}};
+\begin{figure}[ht!]
+  \begin{tikzpicture}[ntitle/.style={node distance=1cm, font=\footnotesize}]
+    \node (global-title) [anchor=west] {\normalsize\textbf{Global State}};
 
     \node [ntitle] (epoch-title) [below=of global-title.west, anchor=west] {Epoch:
       \code{AtomicUsize}};
@@ -834,7 +832,7 @@ overhead of adding garbage.  \todo{implement tags or something, and profile?}
     \node [draw=black!30, fit={(epoch-title) (epoch-fig)}]
       (epoch-box) {};
 
-    \node [ntitle, node distance=0.5cm] (pins-title) [right=of epoch-title.east, anchor=west]
+    \node [ntitle] (pins-title) [below=of epoch-fig.west, anchor=west]
       {Thread Pin List: \code{List<ThreadPinMarker>}};
     {%
       \node [lnode,node distance=0.7cm]  (pins-f-a)  [below=of pins-title.west,
@@ -843,26 +841,27 @@ overhead of adding garbage.  \todo{implement tags or something, and profile?}
           {\code{marker} \nodepart{second} };
         \node [lnode,node distance=0.7cm]  (pins-f-c)  [right=of pins-f-b]
           {\code{marker} \nodepart{second} };
-
-      \draw[ptr] ($ (pins-f-a.east) - (0.2,0) $) -- (pins-f-b.west);
-      \draw[ptr] ($ (pins-f-b.east) - (0.2,0) $) -- (pins-f-c.west);
+      \draw[ptr] ($ (pins-f-a.east) - (0.25,0) $) -- (pins-f-b.west);
+      \draw[ptr] ($ (pins-f-b.east) - (0.25,0) $) -- (pins-f-c.west);
     }
     \node [draw=black!30, fit={(pins-title) (pins-f-c)}] (pins-box) {};
 
-    \node [ntitle, node distance=1.2cm] (garbage-title) [below=of epoch-fig.west, anchor=west]
+    \node [ntitle, node distance=0.9cm] (garbage-title) [below=of pins-f-a.west, anchor=west]
       {Garbage Queue: \code{Queue<(usize, Bag)>}};
     {%
       \node [lnode,node distance=.7cm]  (garbage-f-a)  [below=of garbage-title.west,
         anchor=west] {\code{(10, bag)} \nodepart{second} };
         \node [lnode,node distance=0.7cm]  (garbage-f-b)  [right=of garbage-f-a]
           {\code{(10, bag)} \nodepart{second} };
-        \node [lnode,node distance=0.7cm]  (garbage-f-c)  [right=of garbage-f-b]
+        \node [lnode,node distance=0.55cm]  (garbage-f-c)  [below=of garbage-f-a]
           {\code{(11, bag)} \nodepart{second} };
         \node [lnode,node distance=0.7cm]  (garbage-f-d)  [right=of garbage-f-c]
           {\code{(12, bag)} \nodepart{second} };
-
       \draw[ptr] ($ (garbage-f-a.east) - (0.25,0) $) -- (garbage-f-b.west);
-      \draw[ptr] ($ (garbage-f-b.east) - (0.25,0) $) -- (garbage-f-c.west);
+      \draw[ptr] ($ (garbage-f-b.east) - (0.20, -0.05) $) --
+        ($ (garbage-f-b.east) - (0.20,0.5) $) --
+        ($ (garbage-f-c.north) - (0,-0.30) $) --
+        (garbage-f-c.north);
       \draw[ptr] ($ (garbage-f-c.east) - (0.25,0) $) -- (garbage-f-d.west);
     }
     \node [draw=black!30, fit={(garbage-title) (garbage-f-d)}] (garbage-box) {};
@@ -871,54 +870,50 @@ overhead of adding garbage.  \todo{implement tags or something, and profile?}
       (global-box) {};
 
 
-    \node (local-title) [anchor=west, below=of garbage-f-a, shift={(0.10,0)}]
-      {\large{Local State}};
+    \node (local-title) [anchor=west, right=of global-title, shift={(3.5, 0)}]
+      {\normalsize\textbf{Thread Local State}};
 
-    \node [ntitle] (epoch-title) [below=of local-title.west, anchor=west] {Epoch:
-      \code{AtomicUsize}};
-    \node [block,node distance=0.7cm]  (epoch-fig)  [below=of epoch-title.west, anchor=west] {12};
-    \node [draw=black!30, fit={(epoch-title) (epoch-fig)}]
-      (epoch-box) {};
+    \node [ntitle] (pinptr-title) [below=of local-title.west, anchor=west]
+    {Thread Pin: \code{*const ThreadNodePtr}};
+    \node [draw=black!30, fit={(pinptr-title) }]
+      (pinptr-box) {};
 
-    \node [ntitle, node distance=0.5cm] (pins-title) [right=of epoch-title.east, anchor=west]
-      {Thread Pin List: \code{List<ThreadPinMarker>}};
+    \node [ntitle] (pincount-title) [below=of pinptr-title.west, anchor=west]
+    {Pin Count: \code{usize}};
+    \node [draw=black!30, fit={(pincount-title) }]
+      (pincount-box) {};
+
+    \node [ntitle] (bag-title) [below=of pincount-title.west, anchor=west]
+    {Garbage Bag: \code{Bag}};
     {%
-      \node [lnode,node distance=0.7cm]  (pins-f-a)  [below=of pins-title.west,
-        anchor=west] {\code{marker} \nodepart{second} };
-        \node [lnode,node distance=0.7cm]  (pins-f-b)  [right=of pins-f-a]
-          {\code{marker} \nodepart{second} };
-        \node [lnode,node distance=0.7cm]  (pins-f-c)  [right=of pins-f-b]
-          {\code{marker} \nodepart{second} };
-
-      \draw[ptr] ($ (pins-f-a.east) - (0.2,0) $) -- (pins-f-b.west);
-      \draw[ptr] ($ (pins-f-b.east) - (0.2,0) $) -- (pins-f-c.west);
+      \node [lnode,node distance=.7cm,
+      rectangle split parts=5
+      ]  (bag-fig)  [below=of bag-title.west,
+        anchor=west] {\nodepart{one}
+          \code{garbage} \nodepart{two}
+          \code{garbage} \nodepart{three}
+          \code{garbage} \nodepart{four}
+          \code{empty} \nodepart{five}
+          \code{empty}
+        };
     }
-    \node [draw=black!30, fit={(pins-title) (pins-f-c)}] (pins-box) {};
+    \node [draw=black!30, fit={(bag-title) (bag-fig)}]
+      (bag-box) {};
 
-    \node [ntitle, node distance=1.2cm] (garbage-title) [below=of epoch-fig.west, anchor=west]
-      {Garbage Queue: \code{Queue<(usize, Bag)>}};
-    {%
-      \node [lnode,node distance=.7cm]  (garbage-f-a)  [below=of garbage-title.west,
-        anchor=west] {\code{(10, bag)} \nodepart{second} };
-        \node [lnode,node distance=0.7cm]  (garbage-f-b)  [right=of garbage-f-a]
-          {\code{(10, bag)} \nodepart{second} };
-        \node [lnode,node distance=0.7cm]  (garbage-f-c)  [right=of garbage-f-b]
-          {\code{(11, bag)} \nodepart{second} };
-        \node [lnode,node distance=0.7cm]  (garbage-f-d)  [right=of garbage-f-c]
-          {\code{(12, bag)} \nodepart{second} };
-
-      \draw[ptr] ($ (garbage-f-a.east) - (0.25,0) $) -- (garbage-f-b.west);
-      \draw[ptr] ($ (garbage-f-b.east) - (0.25,0) $) -- (garbage-f-c.west);
-      \draw[ptr] ($ (garbage-f-c.east) - (0.25,0) $) -- (garbage-f-d.west);
-    }
-    \node [draw=black!30, fit={(garbage-title) (garbage-f-d)}] (garbage-box) {};
-
-    \node [anchor=west, draw=black, dotted, fit={(local-title) (pins-box) (garbage-box)}]
+      \node [anchor=west, draw=black, dotted, fit={(local-title) (pinptr-box)
+      (pincount-box) (bag-box)}]
       (local-box) {};
-
   \end{tikzpicture}
-  \caption{The global and thread local data for the implemented EBR
-  scheme.\label{fig:ebr-impl}}
+  \caption{The global and thread local data for the implemented EBR scheme. The
+    global state contains the current Epoch, a list of thread pin markers, and a
+    global garbage queue, in which garbage bags with an epoch is deferred for
+    reclamation.  The thread pin in the thread local state points to that
+    threads entry in the thread pin list. ``Pin Count'' is incremented each time
+    the thread calls \code{pin}, and we use this number to choose when to
+    reclaim memory from the global garbage queue. The thread local garbage bag
+    is buffered garbage, so that we amortize the garbage queue overhead, since
+    the nodes in \emph{that} list also have to be deferred for reclamation,
+    using itself.\label{fig:ebr-impl}}
 \end{figure}
 
 We note that both the thread entry list and garbage queue themselves must be garbage
