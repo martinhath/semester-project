@@ -828,11 +828,10 @@ overhead of adding garbage.  \todo{implement tags or something, and profile?}
 
     \node [ntitle] (epoch-title) [below=of global-title.west, anchor=west] {Epoch:
       \code{AtomicUsize}};
-    \node [block,node distance=0.7cm]  (epoch-fig)  [below=of epoch-title.west, anchor=west] {12};
-    \node [draw=black!30, fit={(epoch-title) (epoch-fig)}]
+    \node [draw=black!30, fit={(epoch-title)}]
       (epoch-box) {};
 
-    \node [ntitle] (pins-title) [below=of epoch-fig.west, anchor=west]
+    \node [ntitle] (pins-title) [below=of epoch-title.west, anchor=west]
       {Thread Pin List: \code{List<ThreadPinMarker>}};
     {%
       \node [lnode,node distance=0.7cm]  (pins-f-a)  [below=of pins-title.west,
@@ -846,7 +845,7 @@ overhead of adding garbage.  \todo{implement tags or something, and profile?}
     }
     \node [draw=black!30, fit={(pins-title) (pins-f-c)}] (pins-box) {};
 
-    \node [ntitle, node distance=0.9cm] (garbage-title) [below=of pins-f-a.west, anchor=west]
+    \node [ntitle] (garbage-title) [below=of pins-f-a.west, anchor=west]
       {Garbage Queue: \code{Queue<(usize, Bag)>}};
     {%
       \node [lnode,node distance=.7cm]  (garbage-f-a)  [below=of garbage-title.west,
