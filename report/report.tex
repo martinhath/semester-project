@@ -970,17 +970,18 @@ node unreachable by its data structure, read the data needed from it, and then
 call \code{add\_garbage} with an \code{Owned<Node<T>>}.  \code{pin} and
 \code{Pin::add\_garbage} are the only two methods a user of EBR needs to use.
 
-The thread entry list is a potential memory problem: each thread makes an entry
-the first time \code{pin} is called, and this entry is never removed. Thus, if
-the system keeps creating threads which crashes right after calling \code{pin},
-the list will quickly grow, and its elements will never be removed. This problem
-can be mitigated by removing the entry from the list if the thread shuts down
-gracefully; however this is still a problem if threads crashes. One solution
-could be to mark the entries with a timestamp, and remove entries that have been
-inactive for too long, as well as to set the threads thread local pointer to
-\code{null}. This creates further complications, since thread may have simply
-been preempted for a long time, such that other threads think it has crashed.
-This problem has not been attempted solved as it is mainly theoretical.
+The thread entry list is a potential memory problem:
+each thread makes an entry the first time \code{pin} is called, and this entry
+is never removed. Thus, if the system keeps creating threads which crashes right
+after calling \code{pin}, the list will quickly grow, and its elements will
+never be removed. This problem can be mitigated by removing the entry from the
+list if the thread shuts down gracefully; however this is still a problem if
+threads crashes. One solution could be to mark the entries with a timestamp, and
+remove entries that have been inactive for too long, as well as to set the
+threads thread local pointer to \code{null}. This creates further complications,
+since thread may have simply been preempted for a long time, such that other
+threads think it has crashed.  This problem has not been attempted solved as it
+is mainly theoretical.\label{sec:thread-cleanup}
 
 \subsection{Hazard Pointers}
 
@@ -1052,7 +1053,23 @@ fit for the Results chapter?}
 \note{Maybe we want to compare before and after comparisons after we have
 optimized the code a little? Look at ordering implications?}
 
-\subsection{Single threaded Benchmarks}
+\todo{fix ``support testing''} While Rust do support testing, it does not
+support benchmarking on the stable release. There exist multiple third party
+benchmark suites, most of which are based on the nightly benchmark system. As
+the implemented memory reclamation schemes uses global state and thread local
+data, we must be careful in how the benchmark suite operates, due to the
+problems noted in Section~\ref{sec:thread-cleanup}.  For these reasons, a
+separate benchmark crate was developed. The system is simple and captures only
+timings of which it reports the average and the variance. These timings were
+used to generate the graphs in Chapter~\ref{ch:results}.
+
+We set up multiple benchmarks, in order to try to find different scenarios in
+which the schemes performs differently. We have \todo{} different benchmarks:
+\begin{description}
+  \item[\code{transport}:] We have two queues, one source and one sink. The
+    source is pre-filled with \code{N} elements. The threads moves all elements
+    from the source to the sink.
+\end{description}
 
 An interesting problem that turned up when benchmarking is the following: how do
 we benchmark the data structures that does not reclaim any memory? The problem
@@ -1071,6 +1088,8 @@ from the standard library. This is a better technique than to allocate the nodes
 up front and pass the \code{Node} to the procedures, as this would hide the
 allocation cost of the procedure. Listing~\ref{lst:bench-nothing} shows a
 benchmark of a Queue using this technique.
+
+\subsection{Single threaded Benchmarks}
 
 \begin{figure}[ht]
   \begin{lstlisting}[caption=Microbenchmark of a data structure without memory
@@ -1104,6 +1123,7 @@ the results given not so good.}
 
 
 \chapter{Results}
+\label{ch:results}
 \note{What did we run? Plot some graphs. What did we find out? Which scheme is
 better for which application? Runtime, power usage, etc.}
 
