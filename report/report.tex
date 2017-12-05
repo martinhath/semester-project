@@ -1122,11 +1122,36 @@ get very varying results, since we amortize cleanup over a many runs. This makes
 the results given not so good.}
 
 
-\chapter{Results}
-\label{ch:results}
+\chapter{Results}\label{ch:results}
 \note{What did we run? Plot some graphs. What did we find out? Which scheme is
 better for which application? Runtime, power usage, etc.}
 
+We have ran the benchmark suite on five different machines, in order to cover
+CPUs from different vendors made for different use cases, hoping to uncover
+differences in the reclamation scheme performance. As the CPUs have a very
+different core and thread count, the number of threads in each benchmark is not
+the same across CPUs, but are capped with the number of hardware threads
+supported for the CPU\@. This means that the benchmarks for the lower end CPUs
+only use up to 4 threads, while the ones for the highly parallel ARM CPUs use up
+to 48. \todo{Double check numbers here.}
+The CPUs we have tested on are a
+Intel\textregistered{}i7--7500U @ 2.70GHz with 2 cores and 4 threads,
+a \todo{mastersal},
+a \todo{webkom},
+a Ryzen 7 1700 @ 3.0GHz with 8 cores and 16 threads,
+and the ARM based Cavium ThunderX @ 2.5GHz with 48 cores and 48 threads.
+
+The benchmakrs are grouped by CPU, each of which have their own section.
+Within each section the benchmarks are grouped by operation on a given data
+structure. We show box plots for most benchmark results.
+
+It is worth noting that one of the schemes we compare, Crossbeam, is a well
+developed open source library, while the remaining, namely EBR, HP and HP-Spin,
+are the authors own implementation. It is therefore expected that Crossbeams
+offers lower overhead of its operations.
+
+
+\section{Intel\textregistered{}i7--7500U}
 \begin{figure}
   \begin{subfigure}{0.45\textwidth}
     \includegraphics[width=\textwidth]{plots/queue-push-1}
@@ -1141,6 +1166,7 @@ better for which application? Runtime, power usage, etc.}
   \begin{subfigure}{0.45\textwidth}
     \includegraphics[width=\textwidth]{plots/queue-push-8}
   \end{subfigure}
+  \caption{}
 \end{figure}
 
 \begin{figure}
@@ -1174,6 +1200,13 @@ better for which application? Runtime, power usage, etc.}
     \includegraphics[width=\textwidth]{plots/queue-transfer-8}
   \end{subfigure}
 \end{figure}
+
+
+
+\section{\todo{mastersal}},
+\section{\todo{webkom}}
+\section{Ryzen 7 1700}
+\section{Cavium ThunderX}
 
 
 \chapter{Discussion}
