@@ -1066,9 +1066,18 @@ used to generate the graphs in Chapter~\ref{ch:results}.
 We set up multiple benchmarks, in order to try to find different scenarios in
 which the schemes performs differently. We have \todo{} different benchmarks:
 \begin{description}
-  \item[\code{transport}:] We have two queues, one source and one sink. The
+  \item[\code{Queue::push}:] We measure the total time it takes to push \code{N}
+    elements into a queue.
+  \item[\code{Queue::pop}:] We measure the total time it takes to pop \code{N}
+    elements out from a queue, which contains \code{N} elements. The threads
+    repeatedly calls \code{pop} until \code{None} is returned.
+  \item[\code{Queue::transport}:] We have two queues, one source and one sink. The
     source is pre-filled with \code{N} elements. The threads moves all elements
     from the source to the sink.
+  \item[\code{List::remove}:] We pre-populate a list with \code{N} numbers in
+    random order. Then each thread removes \code{N/t} unique elements, where
+    \code{t} is the number of threads running. This ensures that all removals
+    are succeding and that the list is empty at the end.
 \end{description}
 
 An interesting problem that turned up when benchmarking is the following: how do
@@ -1137,7 +1146,8 @@ to 48. \todo{Double check numbers here.}
 The CPUs we have tested on are a
 Intel\textregistered{}i7--7500U @ 2.70GHz with 2 cores and 4 threads,
 a \todo{mastersal},
-a \todo{webkom},
+a Intel\textregistered{} Xeon\textregistered{} E5--2620 @ 2.0GHz with 6
+cores and 12 threads,
 a Ryzen 7 1700 @ 3.0GHz with 8 cores and 16 threads,
 and the ARM based Cavium ThunderX @ 2.5GHz with 48 cores and 48 threads.
 
@@ -1151,36 +1161,111 @@ are the authors own implementation. It is therefore expected that Crossbeams
 offers lower overhead of its operations.
 
 
+\clearpage
 \section{Intel\textregistered{}i7--7500U}
-
-
-
+\begin{figure}[ht]
+  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \centering \footnotesize{\code{\scheme}}
+      \includegraphics[width=\textwidth]{plots/laptop-s:\scheme-b:queue_push}
+    \end{subfigure}}
+  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \includegraphics[width=\textwidth]{plots/laptop-s:\scheme-b:queue_pop}
+    \end{subfigure}}
+  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \includegraphics[width=\textwidth]{plots/laptop-s:\scheme-b:queue_transfer}
+    \end{subfigure}}
+    \makebox[0.25\textwidth]{}
+  \foreach \scheme in {ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \includegraphics[width=\textwidth]{plots/laptop-s:\scheme-b:list_remove}
+    \end{subfigure}}
+\end{figure}
 
 \section{\todo{mastersal}}
-\section{\todo{webkom}}
 
+\clearpage
+\section{Intel\textregistered{} Xeon\textregistered{} E5--2620}
+\begin{figure}[ht]
+  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \centering \footnotesize{\code{\scheme}}
+      \includegraphics[width=\textwidth]{plots/server-s:\scheme-b:queue_push}
+    \end{subfigure}}
+  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \includegraphics[width=\textwidth]{plots/server-s:\scheme-b:queue_pop}
+    \end{subfigure}}
+  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \includegraphics[width=\textwidth]{plots/server-s:\scheme-b:queue_transfer}
+    \end{subfigure}}
+    \makebox[0.25\textwidth]{}
+  \foreach \scheme in {ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \includegraphics[width=\textwidth]{plots/server-s:\scheme-b:list_remove}
+    \end{subfigure}}
+    \caption{Results from the benchmark on the Queue.  Columns are reclamation
+    schemes, and rows are benchmarks.  The columns are Crossbeam, EBR, HP, and
+    HP-spin.  The rows are \code{Queue::push}, \code{Queue::pop}, and
+    \code{Queue::transfer}.}
+\end{figure}
+
+\clearpage
 \section{Ryzen 7 1700}
 \begin{figure}[ht]
   \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
     \begin{subfigure}{0.25\textwidth}
+      \centering \footnotesize{\code{\scheme}}
       \includegraphics[width=\textwidth]{plots/ryzen-s:\scheme-b:queue_push}
     \end{subfigure}}
-    \\
   \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
     \begin{subfigure}{0.25\textwidth}
       \includegraphics[width=\textwidth]{plots/ryzen-s:\scheme-b:queue_pop}
     \end{subfigure}}
-    \\
   \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
     \begin{subfigure}{0.25\textwidth}
       \includegraphics[width=\textwidth]{plots/ryzen-s:\scheme-b:queue_transfer}
     \end{subfigure}}
-    \caption{Results from the benchmark on the Queue. The first row is
-      \code{Queue::push}, the second is \code{Queue::pop}, and the last is
-    \code{Queue::transfer}}
+    \makebox[0.25\textwidth]{}
+  \foreach \scheme in {ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \includegraphics[width=\textwidth]{plots/ryzen-s:\scheme-b:list_remove}
+    \end{subfigure}}
+    \caption{Results from the benchmark on the Queue.  Columns are reclamation
+    schemes, and rows are benchmarks.  The columns are Crossbeam, EBR, HP, and
+    HP-spin.  The rows are \code{Queue::push}, \code{Queue::pop}, and
+    \code{Queue::transfer}.}
 \end{figure}
 
+\clearpage
 \section{Cavium ThunderX}
+\begin{figure}[ht]
+  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \centering \footnotesize{\code{\scheme}}
+      \includegraphics[width=\textwidth]{plots/scaleway-s:\scheme-b:queue_push}
+    \end{subfigure}}
+  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \includegraphics[width=\textwidth]{plots/scaleway-s:\scheme-b:queue_pop}
+    \end{subfigure}}
+  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \includegraphics[width=\textwidth]{plots/scaleway-s:\scheme-b:queue_transfer}
+    \end{subfigure}}
+    \makebox[0.25\textwidth]{}
+  \foreach \scheme in {ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \includegraphics[width=\textwidth]{plots/scaleway-s:\scheme-b:list_remove}
+    \end{subfigure}}
+    \caption{Results from the benchmark on the Queue.  Columns are reclamation
+    schemes, and rows are benchmarks.  The columns are Crossbeam, EBR, HP, and
+    HP-spin.  The rows are \code{Queue::push}, \code{Queue::pop}, and
+    \code{Queue::transfer}.}
+\end{figure}
 
 
 \chapter{Discussion}
