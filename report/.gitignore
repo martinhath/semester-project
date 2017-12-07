@@ -3,3 +3,9 @@
 *.log
 *.pdf
 *.toc
+*.bbl
+*.blg
+*.out
+data
+plots
+*.old
