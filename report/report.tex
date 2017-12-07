@@ -1152,60 +1152,34 @@ offers lower overhead of its operations.
 
 
 \section{Intel\textregistered{}i7--7500U}
-\begin{figure}
-  \begin{subfigure}{0.45\textwidth}
-    \includegraphics[width=\textwidth]{plots/queue-push-1}
-  \end{subfigure}
-  \begin{subfigure}{0.45\textwidth}
-    \includegraphics[width=\textwidth]{plots/queue-push-2}
-  \end{subfigure}
-  \\
-  \begin{subfigure}{0.45\textwidth}
-    \includegraphics[width=\textwidth]{plots/queue-push-4}
-  \end{subfigure}
-  \begin{subfigure}{0.45\textwidth}
-    \includegraphics[width=\textwidth]{plots/queue-push-8}
-  \end{subfigure}
-  \caption{}
-\end{figure}
-
-\begin{figure}
-  \begin{subfigure}{0.45\textwidth}
-    \includegraphics[width=\textwidth]{plots/queue-pop-1}
-  \end{subfigure}
-  \begin{subfigure}{0.45\textwidth}
-    \includegraphics[width=\textwidth]{plots/queue-pop-2}
-  \end{subfigure}
-  \\
-  \begin{subfigure}{0.45\textwidth}
-    \includegraphics[width=\textwidth]{plots/queue-pop-4}
-  \end{subfigure}
-  \begin{subfigure}{0.45\textwidth}
-    \includegraphics[width=\textwidth]{plots/queue-pop-8}
-  \end{subfigure}
-\end{figure}
-
-\begin{figure}
-  \begin{subfigure}{0.45\textwidth}
-    \includegraphics[width=\textwidth]{plots/queue-transfer-1}
-  \end{subfigure}
-  \begin{subfigure}{0.45\textwidth}
-    \includegraphics[width=\textwidth]{plots/queue-transfer-2}
-  \end{subfigure}
-  \\
-  \begin{subfigure}{0.45\textwidth}
-    \includegraphics[width=\textwidth]{plots/queue-transfer-4}
-  \end{subfigure}
-  \begin{subfigure}{0.45\textwidth}
-    \includegraphics[width=\textwidth]{plots/queue-transfer-8}
-  \end{subfigure}
-\end{figure}
 
 
 
-\section{\todo{mastersal}},
+
+\section{\todo{mastersal}}
 \section{\todo{webkom}}
+
 \section{Ryzen 7 1700}
+\begin{figure}[ht]
+  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \includegraphics[width=\textwidth]{plots/ryzen-s:\scheme-b:queue_push}
+    \end{subfigure}}
+    \\
+  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \includegraphics[width=\textwidth]{plots/ryzen-s:\scheme-b:queue_pop}
+    \end{subfigure}}
+    \\
+  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \includegraphics[width=\textwidth]{plots/ryzen-s:\scheme-b:queue_transfer}
+    \end{subfigure}}
+    \caption{Results from the benchmark on the Queue. The first row is
+      \code{Queue::push}, the second is \code{Queue::pop}, and the last is
+    \code{Queue::transfer}}
+\end{figure}
+
 \section{Cavium ThunderX}
 
 

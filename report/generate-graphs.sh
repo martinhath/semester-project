@@ -11,7 +11,6 @@ TMP="tmp"
 if [[ ! -d "$TMP" ]]; then mkdir "$TMP"; fi
 
 KINDS=`find $DIR -maxdepth 1 | grep -oP "\/\K\w+$"`
-echo $KINDS
 
 function gnuplot_box_threads() {
   # arg1: data file
@@ -76,4 +75,3 @@ function plots_comparing_threads() {
 }
 
 plots_comparing_threads
-rm -r $TMP
