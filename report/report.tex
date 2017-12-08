@@ -1160,28 +1160,35 @@ developed open source library, while the remaining, namely EBR, HP and HP-Spin,
 are the authors own implementation. It is therefore expected that Crossbeams
 offers lower overhead of its operations.
 
+\newcommand{\figuregrid}[1]{
+  \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{Queue::push}}}
+  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \centering \footnotesize{\code{\scheme}}
+      \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:queue_push}
+    \end{subfigure}}
+    \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{Queue::pop}}}
+  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:queue_pop}
+    \end{subfigure}}
+    \rotatebox{90}{\hspace{-0.9cm}\footnotesize{\code{Queue::transfer}}}
+  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:queue_transfer}
+    \end{subfigure}}
+    \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{List::remove}}}
+  \makebox[0.25\textwidth]{}
+  \foreach \scheme in {ebr, hp, hpspin} {%
+    \begin{subfigure}{0.25\textwidth}
+      \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:list_remove}
+    \end{subfigure}}
+}
 
 \clearpage
 \section{Intel\textregistered{}i7--7500U}
 \begin{figure}[ht]
-  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
-      \centering \footnotesize{\code{\scheme}}
-      \includegraphics[width=\textwidth]{plots/laptop-s:\scheme-b:queue_push}
-    \end{subfigure}}
-  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
-      \includegraphics[width=\textwidth]{plots/laptop-s:\scheme-b:queue_pop}
-    \end{subfigure}}
-  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
-      \includegraphics[width=\textwidth]{plots/laptop-s:\scheme-b:queue_transfer}
-    \end{subfigure}}
-    \makebox[0.25\textwidth]{}
-  \foreach \scheme in {ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
-      \includegraphics[width=\textwidth]{plots/laptop-s:\scheme-b:list_remove}
-    \end{subfigure}}
+  \figuregrid{laptop}
 \end{figure}
 
 \section{\todo{mastersal}}
@@ -1189,82 +1196,19 @@ offers lower overhead of its operations.
 \clearpage
 \section{Intel\textregistered{} Xeon\textregistered{} E5--2620}
 \begin{figure}[ht]
-  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
-      \centering \footnotesize{\code{\scheme}}
-      \includegraphics[width=\textwidth]{plots/server-s:\scheme-b:queue_push}
-    \end{subfigure}}
-  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
-      \includegraphics[width=\textwidth]{plots/server-s:\scheme-b:queue_pop}
-    \end{subfigure}}
-  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
-      \includegraphics[width=\textwidth]{plots/server-s:\scheme-b:queue_transfer}
-    \end{subfigure}}
-    \makebox[0.25\textwidth]{}
-  \foreach \scheme in {ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
-      \includegraphics[width=\textwidth]{plots/server-s:\scheme-b:list_remove}
-    \end{subfigure}}
-    \caption{Results from the benchmark on the Queue.  Columns are reclamation
-    schemes, and rows are benchmarks.  The columns are Crossbeam, EBR, HP, and
-    HP-spin.  The rows are \code{Queue::push}, \code{Queue::pop}, and
-    \code{Queue::transfer}.}
+  \figuregrid{server}
 \end{figure}
 
 \clearpage
 \section{Ryzen 7 1700}
 \begin{figure}[ht]
-  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
-      \centering \footnotesize{\code{\scheme}}
-      \includegraphics[width=\textwidth]{plots/ryzen-s:\scheme-b:queue_push}
-    \end{subfigure}}
-  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
-      \includegraphics[width=\textwidth]{plots/ryzen-s:\scheme-b:queue_pop}
-    \end{subfigure}}
-  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
-      \includegraphics[width=\textwidth]{plots/ryzen-s:\scheme-b:queue_transfer}
-    \end{subfigure}}
-    \makebox[0.25\textwidth]{}
-  \foreach \scheme in {ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
-      \includegraphics[width=\textwidth]{plots/ryzen-s:\scheme-b:list_remove}
-    \end{subfigure}}
-    \caption{Results from the benchmark on the Queue.  Columns are reclamation
-    schemes, and rows are benchmarks.  The columns are Crossbeam, EBR, HP, and
-    HP-spin.  The rows are \code{Queue::push}, \code{Queue::pop}, and
-    \code{Queue::transfer}.}
+  \figuregrid{ryzen}
 \end{figure}
 
 \clearpage
 \section{Cavium ThunderX}
 \begin{figure}[ht]
-  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
-      \centering \footnotesize{\code{\scheme}}
-      \includegraphics[width=\textwidth]{plots/scaleway-s:\scheme-b:queue_push}
-    \end{subfigure}}
-  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
-      \includegraphics[width=\textwidth]{plots/scaleway-s:\scheme-b:queue_pop}
-    \end{subfigure}}
-  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
-      \includegraphics[width=\textwidth]{plots/scaleway-s:\scheme-b:queue_transfer}
-    \end{subfigure}}
-    \makebox[0.25\textwidth]{}
-  \foreach \scheme in {ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
-      \includegraphics[width=\textwidth]{plots/scaleway-s:\scheme-b:list_remove}
-    \end{subfigure}}
-    \caption{Results from the benchmark on the Queue.  Columns are reclamation
-    schemes, and rows are benchmarks.  The columns are Crossbeam, EBR, HP, and
-    HP-spin.  The rows are \code{Queue::push}, \code{Queue::pop}, and
-    \code{Queue::transfer}.}
+  \figuregrid{scaleway}
 \end{figure}
 
 
