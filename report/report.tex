@@ -1142,14 +1142,12 @@ different core and thread count, the number of threads in each benchmark is not
 the same across CPUs, but are capped with the number of hardware threads
 supported for the CPU\@. This means that the benchmarks for the lower end CPUs
 only use up to 4 threads, while the ones for the highly parallel ARM CPUs use up
-to 48. \todo{Double check numbers here.}
-The CPUs we have tested on are a
-Intel\textregistered{}i7--7500U @ 2.70GHz with 2 cores and 4 threads,
-a \todo{mastersal},
-a Intel\textregistered{} Xeon\textregistered{} E5--2620 @ 2.0GHz with 6
-cores and 12 threads,
-a Ryzen 7 1700 @ 3.0GHz with 8 cores and 16 threads,
-and the ARM based Cavium ThunderX @ 2.5GHz with 48 cores and 48 threads.
+to 48. \todo{Double check numbers here.} The CPUs we have tested on are a
+Intel\textregistered{}i7--7500U @ 2.70GHz with 2 cores and 4 threads, a
+Intel\textregistered{} i7--4770 @ 3.40GHz with 4 cores and 8 threads, a
+Intel\textregistered{} Xeon\textregistered{} E5--2620 @ 2.0GHz with 6 cores and
+12 threads, a Ryzen 7 1700 @ 3.0GHz with 8 cores and 16 threads, and the ARM
+based Cavium ThunderX @ 2.5GHz with 48 cores and 48 threads.
 
 The benchmakrs are grouped by CPU, each of which have their own section.
 Within each section the benchmarks are grouped by operation on a given data
@@ -1160,27 +1158,29 @@ developed open source library, while the remaining, namely EBR, HP and HP-Spin,
 are the authors own implementation. It is therefore expected that Crossbeams
 offers lower overhead of its operations.
 
+We stress that the y-axis may differ wildly on the benchmarks.
+
 \newcommand{\figuregrid}[1]{
   \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{Queue::push}}}
-  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
+  \foreach \scheme in {nothing, crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.20\textwidth}
       \centering \footnotesize{\code{\scheme}}
       \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:queue_push}
     \end{subfigure}}
     \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{Queue::pop}}}
-  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
+  \foreach \scheme in {nothing, crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.20\textwidth}
       \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:queue_pop}
     \end{subfigure}}
     \rotatebox{90}{\hspace{-0.9cm}\footnotesize{\code{Queue::transfer}}}
-  \foreach \scheme in {crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
+  \foreach \scheme in {nothing, crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.20\textwidth}
       \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:queue_transfer}
     \end{subfigure}}
     \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{List::remove}}}
-  \makebox[0.25\textwidth]{}
+  \makebox[0.40\textwidth]{}
   \foreach \scheme in {ebr, hp, hpspin} {%
-    \begin{subfigure}{0.25\textwidth}
+    \begin{subfigure}{0.20\textwidth}
       \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:list_remove}
     \end{subfigure}}
 }
@@ -1191,7 +1191,11 @@ offers lower overhead of its operations.
   \figuregrid{laptop}
 \end{figure}
 
-\section{\todo{mastersal}}
+\clearpage
+\section{Intel\textregistered{} i7--4770}
+\begin{figure}[ht]
+  \figuregrid{gribb}
+\end{figure}
 
 \clearpage
 \section{Intel\textregistered{} Xeon\textregistered{} E5--2620}

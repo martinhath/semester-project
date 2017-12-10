@@ -22,6 +22,7 @@ function gnuplot_box_threads() {
     "ryzen") xtics="('1' 1, '2' 2, '4' 3, '8' 4, '16' 5)" ;;
     "server") xtics="('1' 1, '2' 2, '4' 3, '8' 4, '12' 5)" ;;
     "scaleway") xtics="('1' 1, '2' 2, '4' 3, '8' 4, '16' 5, '32' 6)" ;;
+    "gribb") xtics="('1' 1, '2' 2, '4' 3, '8' 4)" ;;
     *)
       (2>&1 echo "Invalid kind: $4")
       ;;
@@ -52,6 +53,7 @@ function plots_comparing_threads() {
       "ryzen") threads=5 ;;
       "server") threads=5 ;;
       "scaleway") threads=6 ;;
+      "gribb") threads=4 ;;
       *)
         (2>&1 echo "that kind is not valid! $kind")
         exit 1
