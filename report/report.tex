@@ -40,83 +40,104 @@
 \tableofcontents
 
 \chapter{Introduction}
-\note{Outline: parallelism, garbage collection, what we are about to do,
-rust, performance, usability}
+\todo{Add note on course at NTNU in the fall of 2017 etc?}
+% \note{Outline: parallelism, garbage collection, what we are about to do,
+% rust, performance, usability}
 
-\chapter{Background}
-
-\note{I meant to write a quick intro on parallelism, and why we care. Maybe this
-this is out of scope?}
 In 1965 Gordon Moore stated what is now knows as \emph{Moore's Law}, which
-roughly states that the number of transistors on integrated circuits will
-double every 18 months. The law has also been used to describe the clock speed
-of central processing units (CPU's). However, this exponential growth came to a
-halt during the 2000s, where the clock speed of CPUs stopped between 3 GHz and
-4 GHz Over 10 years later high end consumer CPUs still have a clock speed in
-that same range, and the performance increase of modern CPUs has mainly been
-due to increase in parallelism\note{has it, though? Or is it more that CPUs
-hasn't really improved that much?}. This improvement however, has not been as
-noticeable as the former improvements in clock speed. This is because programs
-already written cannot automatically use the extra parallelism that newer
-architectures give us; Parallelism needs to be accounted for by programmers.
+roughly states that the number of transistors on integrated circuits will double
+every 18 months. The law has also been used to describe the increse in clock
+speed of central processing units (CPU's). During the 2000s however, this growth
+slowed drastically, and CPU's sold today have very similar clock speeds as those
+sold in 2005. Desipte the clock speed stagnation, there have been major
+performance improvements in the last 15 years. We have more cache, improved
+branch predictors, larger vector instructions, superscalar architechtures, and
+\emph{multi-core systems}, the latter of which is central to this report.
+Multi-core systems are now ubiquitous; high end desktop CPUs with 16 cores are
+available, and even smartphones with 8 cores are in the market in 2017.
 
-\note{fix this. It reads alright on its own, but the previous paragraph ends
-with the same thing, making it very weird to read.}
-Despite having multi-core architectures as the most central performance
-improvement in CPUs, parallelism is not a success story for programmers. Most
-mainstream programming languages does not have first class support for parallel
-constructs, and synchronization and work management\note{?} must still be
-handled explicitly by the programmer, using fairly low level constructs, such
-as mutexes and threads \note{what are alternatives?}.
-\note{what is the motivation behind this? Do we want to make the claim that
-Rust is making low level stuff more approachable, and that we can help
-improving the performance of programs written by having CMR in Rust?}
-In short, parallelism has yet to be approachable for a lot of programmers.
-\note{If we are going to complain on the state of parallel programming we
-should at least mention some alternatives.}
-\note{Parallelism isn't a success story for programmers. Hard, error-prone,
-even simple things goes wrong. Need effective abstractions to improve this.??}
+The introduction and growth of multi-core systems, however, has not been as
+noticeable as the former improvements in clock speed. One reason for this is
+that many real world problems and systems are inherently serial problems. Due to
+Amdahls Law, this even puts an upper bound on the possible speedup we can get by
+using concurrency.  Another reason is that programs already written cannot
+automatically use the extra parallelism that newer architectures give us;
+parallelism needs to be accounted for by programmers, and often imply a major
+shift in program architecture. \todo{?}A third reason may be that concurrent systems are
+extremely complex. Bugs are (usually) not reproducible, tests are not
+deterministic, and the combinatorial explosion of possible interwindings of
+executions across threads makes a brute force approach to program verification
+intractable.
+
+\todo{want to say that the complexity of concurrency means that most programmers
+have already given it up, due to the lack of good, generic contstructs for eg.
+work sharing, thread management, synchronization, and communication.}
+A consequence of the complexity of concurrent systems is that most programming
+languages have poor support for concurrency, as it is often regarded as a last
+resort, or an area reserved for expert programmers only.
+In short, concurrency has yet to be approachable for a lot of programmers.
+
+In this report we look at the problem of concurrent memory reclamation. The
+problem can be informally stated as ``how to we know when it is safe to free
+allocated memory in a concurrent system?''. In Chapter~\ref{ch:background} we
+look at the needed prerequisites in order to fully understand the problem and
+its nuances; in Chapter~\ref{ch:memory-reclamation} we look at different memory
+reclamation schemes, both the ones implemented here and a highlight of newer
+variants; in Chapter~\ref{ch:methodology} we look at the practical side of this
+project: implementing memory reclamation schemes in Rust, as well as testing and
+benchmarking methods; in Chapter~\ref{ch:results} we look at the experimental
+results from running the system implemented; and in Chapter~\ref{ch:discussion}
+we summarize the project, comment on methodologies, and suggest future work.
+
+\note{what is the motivation behind this? Do we want to make the claim that Rust
+is making low level stuff more approachable, and that we can help improving the
+performance of programs written by having CMR in Rust?}
+
+\note{Parallelism isn't a success story for programmers. Hard, error-prone, even
+simple things goes wrong. Need effective abstractions to improve this.??}
 
 
-\subsection*{\note{TODO LIST}}
-\note{What do we need to understand in order to appreciate this report?
-Moore's law, parallel applications, multi core, blabla\\
-Something about ARM.\\
-maybe notes on state of the art concurrency stuff?
-\\
-Notes on memory terminology (retire, reclaim, etc.)
-\\
-Consider adding MS queue or something to show pitfalls in concurrent programming?
-}
+\chapter{Background\label{ch:background}}
 
-\section{Terminology}
-We start with basic terminology of memory management. Most of the programs we
-write \emph{allocate} memory, meaning requesting a memory range from the OS for
-exclusive use by the program. This memory is then \emph{deallocated}, or
-\emph{freed}, when we are done with it, so that the memory may be used at a
-later time; the memory is thus \emph{reclaimed}. If we want to ``mark'' memory
-as freed without freeing it (that is, the program still has exclusive use of
-it) we say we \emph{retire} the memory (reasons for doing so will become
-apparent). In concurrent settings, we risk accessing memory at the same time; a
-\emph{data race}, or a \emph{race condition} is when multiple threads are
-operating on the same memory at simultaneously, and where at least one operation
-is a write.
+\todo{Consider adding MS queue or something to show pitfalls in concurrent programming?}
 
-Both modern compilers and CPUs may reorder program instructions if they think
-it will improve performance, for instance by improving memory locality and thus
+The field of computer science is broad and diverse, so readers may have very
+different prerequisites.  We will assume the reader is familiar with traditional
+memory management (as in C), and the basics of computer hardware, such as the
+existence of cahce memory. The report will (hopefully) be approachable to anyone
+with this background.
+
+\section{Terminology} We start with basic terminology of memory management. Most
+of the programs we write \emph{allocate} memory, meaning requesting a memory
+range from the OS for exclusive use by the program. This memory is then
+\emph{deallocated}, or \emph{freed}, when we are done with it, so that the
+memory may be used at a later time for a different purpouse; the memory is thus
+\emph{reclaimed}. If we want to ``mark'' memory as freed without freeing it
+(that is, the program still has exclusive use of it) we say we \emph{retire} the
+memory (reasons for doing so will become apparent). In concurrent settings, we
+risk accessing memory at the same time; a \emph{data race}, or a \emph{race
+condition} is when multiple threads are operating on the same memory
+simultaneously, and where at least one operation is a write.
+
+Both modern compilers and CPUs may reorder program instructions if they think it
+will improve performance, for instance by improving memory locality and thus
 improving cache behavior, or reduce pipeline stalling. This may or may not be
 acceptable by the program. The guarantee that the instructions executed appear
-to take effect in program order is called \emph{sequential consistency}, and
-was defined by Leslie Lamport in 1979\todo{source here}. We call a system in
+to take effect in program order is called \emph{sequential consistency} (SC),
+and was defined by Leslie Lamport in 1979\todo{source here}. We call a system in
 which threads can be prevented from making progress \emph{blocking}. The
-opposite of blocking is \emph{non-blocking}. A method is \emph{lock-free} if we
+opposite of blocking is \emph{non-blocking}. A system is \emph{lock-free} if we
 have a guarantee that \emph{some} thread will make progress. Note that any given
-thread may be blocked for an infinite amount of time. The guarantee that any
-given thread will eventually make progress is called \emph{wait-freedom}.  For a
-more thorough introduction see~\cite{herlihy2011art}.
+thread may be blocked for an infinite amount of time. The guarantee that
+\emph{any} given thread will eventually make progress is called
+\emph{wait-freedom}.  For a more thorough introduction
+see~\cite{herlihy2011art}.
 
-
-\note{parallel vs concurrent?}
+In communities dealing with concurrency and parallelism the meaning of the two
+words is often debated. We will settle for the informal definitions given
+in~\cite{pacheco2011introduction}. An informal distinction is that in a parallel
+system multiple tasks run simultaneously, while in a concurrent system multiple
+tasks may be in progress at the same time.
 
 
 \section{Rust}\label{sec:rust}
@@ -125,7 +146,7 @@ Rust~\cite{rust} is a programming language which focus is safety, performance,
 and concurrency. It is is freely developed by over 1900 contributors on the
 version control platform GitHub~\cite{github}, and is officially sponsored by
 Mozilla. Rust 1.0 was released in May 2015, and the current stable version of
-the language is 1.21, with a new version released every 6th week. The language
+the language is 1.22, with a new version released every 6th week. The language
 is compiled and typed, and includes features such as type inference, pattern
 matching, tagged enums, template-like generics, and a minimal runtime without a
 garbage collector. As of November 2017 the official Rust compiler \code{rustc}
@@ -138,13 +159,14 @@ thorough introduction to Rust, see The Rust Programming Language\cite{trpl}.
 As C++, Rust has structs. It does not however have classes or inheritance. The
 type system is based around \emph{traits}, which are comparable to interfaces in
 Java. A trait defines methods, optionally with an implementation. We can then
-\emph{implement} the trait for a struct. Implementing a trait for a struct
-requires that either the trait of the struct is defined in the \emph{crate} the
-implementation is in. A consequence of this is that it is possible to extend
-types from the standard library. It is possible to have values which type is a
-trait, called \emph{trait objects}. This is useful when we want to be agnostic
-of the implementation of an interface. However, this requires dynamic dispatch
-of the function calls of the value.
+\emph{implement} a trait for a struct. Implementing a trait for a struct
+requires that either the trait of the struct is defined in the \emph{crate} (the
+project unit) the implementation is in. A consequence of this is that it is
+possible to extend types from the standard library with ones own traits. It is
+possible to have values which type is a trait, called \emph{trait objects}. This
+is useful when we want to be agnostic of the implementation of an interface.
+However, this requires dynamic dispatch of the function calls of the value,
+which imposes a runtime overhead.
 
 Despite the lack of a garbage collector, Rust programmers does not have to
 manually manage memory. Rust solves this through \emph{ownership} semantics:
@@ -165,22 +187,22 @@ allocation is initialization). This way we get a safe abstraction over heap
 allocation, since the memory is freed exactly once when the \code{Box} goes out
 of scope.  \code{Box<T>} also implements another trait, \code{Deref<T>}, which
 causes \code{Box} references to automatically be converted by the compiler to
-\code{T} references, when needed. We note that we can \emph{not} pass a
-\code{Box<T>} to a function that takes a \code{T}, since they have different
-\code{drop} implementations.
+\code{T} references, if needed. We note that we can \emph{not} pass a
+\code{Box<T>} to a function that takes a \code{T}, since the two types have
+different \code{drop} implementations.
 
 In addition to the ownership rules, Rust have two important rules for
-references: references are always valid, and aliased references where more than
-one is mutable is not allowed. At compile time Rust tracks the \emph{lifetime}
-of all values, and ensures that the lifetime of all references does not outlive
-the lifetime of the data they are referencing. If a function returns a reference
-to a value allocated on the stack of that function it is caught at compile time,
-since the references lifetime would outlive the functions lifetime, and the
-values lifetime is at most that of the function. The second rule stops one
-reference to destroy the data that another reference points to. For instance it
-is not allowed (and caught at compile time) to have a reference to a value
-inside a \code{Vec} and mutate the \code{Vec}, since mutating the \code{Vec}
-might cause the data to be moved, which invalidates the reference.
+references: references are always valid, and mutable references are exclusive.
+At compile time Rust tracks the \emph{lifetime} of all values, and ensures that
+the lifetime of all references does not outlive the lifetime of the data they
+are referencing. If a function returns a reference to a value allocated on the
+stack of that function it is caught at compile time, since the reference's
+lifetime would outlive the functions lifetime, and the values lifetime is at
+most that of the function. The second rule stops one reference to invalidate the
+data that another reference points to. For instance it is not allowed (and
+caught at compile time) to have a reference to a value inside a \code{Vec} and
+mutate the \code{Vec}, since mutating the \code{Vec} might cause the data to be
+moved, which invalidates the reference.\todo{feedback on this paragraph}
 
 \subsection{Unsafe Rust}
 
@@ -189,17 +211,18 @@ language, offers an escape hatch for this: \emph{unsafe code}. In unsafe code it
 is allowed to: dereference raw pointers, call \code{unsafe} functions, implement
 \code{unsafe} traits, and mutate static variables. Raw pointers are, as in C and
 C++, just a memory address, and as with references, both a immutable
-(\code{*const T}) and mutable (\code{*mut T}) variants exist. In unsafe Rust,
-we enter the dangerous and error-prone territory that C and C++ programmers know
-all too well. Examples of \code{unsafe} functions are all FFI functions,
-unchecked array indexing, and creating a \code{String} without UTF-8 checks (all
-\code{String}s in Rust are valid UTF-8).
-
-\code{unsafe} code is often more about signaling to the programmer
+(\code{*const T}) and mutable (\code{*mut T}) variants exist. The difference
+between references and raw pointers is that raw poiters do not have lifetimes
+attached to them. In unsafe Rust, we enter the dangerous and error-prone
+territory that C and C++ programmers know all too well. Examples of
+\code{unsafe} functions are all FFI functions, unchecked array indexing, and
+creating a \code{String} without UTF-8 checks (all \code{String}s in Rust are
+valid UTF-8). \code{unsafe} code is often more about signaling to the programmer
 that the code is fragile, and that one should put extra care into making sure
-that ones assumptions are correct. Many of the \code{unsafe} functions in
-\code{std} are versions of safe functions without error checking, which is
-desirable when we know (or think we know) that we do not need them.
+that ones assumptions are correct. For instance, dereferencing raw pointers is
+\code{unsafe}, but it may happen that we know that the pointer is still valid,
+eg.\ if it points to heap memory that we explicitly leaked, using
+\code{std::mem::forget}.
 
 By exposing \code{unsafe} to programmers, one might argue that Rust is just as
 unsafe as C or C++. The primary advantage of \code{unsafe} is that the ratio of
@@ -212,7 +235,7 @@ perfectly safe code.
 
 
 
-\section{Concurrency in Hardware}
+\section{Concurrency in Hardware \todo{HTM?}}
 
 Most programmers rarely have to think about the hardware their programs run on.
 Caches, for instance, is designed to be transparent for programmers. With
@@ -222,15 +245,15 @@ multi-core CPU's with multiple levels of cache; this includes most modern CPU's,
 both desktop computers and laptops, as well as most mobile devices, such as
 smartphones and tablets.
 
-The cache hierarchy poses a problem for shared memory programs. The first cache
-level, L1, is usually only used by one core, while the remaining levels, L2 (and
-maybe L3), are shared. This means that when a program is writing to memory, the
-same logical memory may be present in multiple physical locations on the CPU.\@
-This causes synchronization problems when this memory is written to. This is the
-problem of \emph{cache coherence}. A memory range does not even have to be used
-by multiple threads: since caches operates in memory chunks, called \emph{cache
-lines}, it is enough that two values are on the same cache line for
-synchronization to occur. This is called \emph{false sharing}.
+The cache hierarchy poses a problem for shared memory programs. Each core
+usually have their own L1 cache, while the remaining levels, L2 (and maybe L3),
+are shared between cores. This means that when a program is writing to memory,
+the same logical memory may be present in multiple physical locations on the
+CPU.\@ This causes synchronization problems when this memory is written to. This
+is the problem of \emph{cache coherence}. A memory range does not even have to
+be used by multiple threads: since caches operate on memory chunks, called
+\emph{cache lines}, it is enough that two values are on the same cache line for
+synchronization problems to occur. This is called \emph{false sharing}.
 
 We would like our programs to be sequentially consistent, as this maps the
 program execution to the source code of the program. However, we also want our
@@ -255,36 +278,38 @@ for SC loads and stores. For more information on x86, see Chapter 8.2.2
 in~\cite{intel64}; for information about ARMv7 see~\cite{armv7-reference-manual},
 and for ARMv8 see~\cite{armv8-reference-manual}.
 
-Instruction sets have \emph{atomic} operations. An operation is atomic if its is
-performed either fully or not at all. For instance, if thread A non-atomically
-stores a value at a location, thread B may observe the write when it is only
-partially performed. This is not possible using atomic instructions.  Atomic
-load and store is the two most fundamental atomic operations, but most platforms
-also give us additional instructions; the most notable begin
-\code{compare-and-swap} (\code{CAS}). \code{CAS} takes three arguments: a memory
-address, a value A, and a value B. If the value at the given address is A, it
-writes B to the address. If not, nothing is done. \code{CAS} is a central
-building block in concurrent programming, and especially in lock-free
-programming.
-
-\note{We can mention transactional memory, and stuff like that?}
+Many instruction sets have \emph{atomic} operations. An operation is atomic if
+its is performed either fully or not at all. For instance, if thread A
+non-atomically stores a value at a location, thread B may observe the write when
+it is only partially performed. This is not possible using atomic instructions.
+Atomic load and store is the two most fundamental atomic operations, but most
+platforms also give us additional instructions; the most notable being
+\code{compare-and-swap} (\code{CAS}) and \code{fetch-and-add} (\code{FAA}).
+\code{CAS} takes three arguments: a memory address, a value A, and a value B. If
+the value at the given address is A, it writes B to the address. If not, nothing
+is done. \code{FAA} atomically increments a memory location by the specified
+value. \code{CAS} is a central building block in concurrent programming, and
+especially in lock-free programming.
 
 \section{Concurrency in Software}
 
-\note{Hardware works such and such, but how does programmers handle these
-things?  Mention \code{volatile}? Look at instructions?  Many programmers does
-not think about cache problems. What about concurrency problems? May they also
-be ignored? (no)}
+Modern operating systems run programs as \emph{processes}. Processes may spawn
+other processes or \emph{threads} for concurrent program execution. Processes
+and threads differ in that threads share the memory space of their parent
+process, while processes do not. Since we are looking at memory reclamation, we
+will only be looking at shared memory concurrency, meaning concurrency using
+threads.
 
-\note{Threads, Processes, CAS, FA, Mutex, volatile, }
+\todo{write about mutexes, semaphores, message passing, work stealing, condvars,
+cilk, rayon, go, green threads}
 
-We start the section with a motivating example of instruction reordering.
-Consider Listing~\ref{lst:reordering}, and assume variables are initialized to
-0.  When ran sequentially (first B and then A), we would observe no difference
-if the assignments of thread B were reordered; the end result would be that we
-print \code{1}. However, when run concurrently thread B might decide to assign
-\code{f = 1} first, and thread A will risk printing \code{0} instead of
-\code{1}. This outcome was impossible in the sequential world.
+We end this section with an example of instruction reordering. Consider
+Listing~\ref{lst:reordering}, and assume variables are initialized to 0.  When
+ran sequentially (first B and then A), we would observe no difference if the
+assignments of thread B were reordered; the end result would be that we print
+\code{1}. However, when run concurrently thread B might decide to assign \code{f
+= 1} first, and thread A will risk printing \code{0} instead of \code{1}. This
+outcome was impossible in the sequential world.
 \begin{figure}[ht]
 \begin{lstlisting}[caption=Instruction reordering,label=lst:reordering]
 // Thread A                      // Thread B
@@ -383,18 +408,16 @@ has taken place. This conclusion however, might not be valid.
 Consider the following real world analogy: assume you have a opaque bottle that
 is filled with water. If you leave the bottle somewhere and return to it after
 some time there is no way to see whether anyone has been drinking your water, by
-simply inspecting the bottle itself. Someone might have taken the bottle, drunk
-the water, and put the bottle back as it were. Even worse, someone might have
-replaced your bottle with an identical bottle filled with snakes.
-
-An more relevant example is in lock-free lists. Consider a linked list, where
+simply inspecting the bottle from the outside. Someone might have taken the
+bottle, drunk the water, and put the bottle back as it were. Even worse, someone
+might have replaced your bottle with an identical bottle filled with bees.
+Another example comes from in lock-free lists. Consider a linked list, where
 nodes have a \code{next} pointer to the next element in the list.  By reading
-the \code{next} field on a node twice at times $t_0$ and $t_1$, we might
-conclude that the next node is the same. However, the node at $t_0$ may have
-been removed from the list, its memory reclamed for a new node, which is then
-inserted at the same place before $t_1$. This can be disasterous if we read the
-\code{next} field of the node at $t_0$, for instance if we are trying to remove
-the node.
+the \code{next} field on a node twice at times $t\sb{0}$ and $t\sb{1}$, and
+observing no change, we might conclude that the next node is the same. However,
+the node at $t\sb{0}$ may have been removed from the list, its memory reclamed
+for a new node, which is then inserted at the same place before $t\sb{1}$. This
+can be disasterous and cause problems such as double deletes.
 
 Instances of the ABA problem is easily prevented if we have atomic operations
 that can check for change in the memory, even if it is changed back to the
@@ -410,8 +433,7 @@ Another instruction that helps with the ABA problem is double compare-and-swap,
 or \code{DCAS}, which is a two \code{CAS} operations that both must succeed for
 any value to be updated. \code{DCAS} is not supported by any architecture. We
 note that this is a different operation than double \emph{word} compare-and-swap
-(\code{DWCAS}), which is a regular \code{CAS} that writes values that are double
-words.
+(\code{DWCAS}), which is a regular \code{CAS} that writes double word values.
 
 Without propper hardware support there is no one good solution to the ABA
 problem, but most instances of the problem are managable. Solution ideas include
@@ -425,7 +447,7 @@ these solution ideas.
 
 
 
-\chapter{Memory Reclamation}
+\chapter{Memory Reclamation\label{ch:memory-reclamation}}
 
 \note{What is memory reclamation? Why is it hard?  What approaches are there?}
 \note{Assumed background: had OS, have programmed in C or C++.}
@@ -616,7 +638,7 @@ Or maybe its better to just put it at the end of the subsection.}
 but it would be nice to have them in the report}
 
 
-\chapter{Methodology}
+\chapter{Methodology\label{ch:methodology}}
 \note{How did we implement the schemes? What choices did we have to take?
 Whys. Also implementation problems, testing techniques, profiling setup etc.
 Include std allocator change}
@@ -1150,7 +1172,7 @@ the same across CPUs, but are capped with the number of hardware threads
 supported for the CPU\@. This means that the benchmarks for the lower end CPUs
 only use up to 4 threads, while the ones for the highly parallel ARM CPUs use up
 to 48. \todo{Double check numbers here.} The CPUs we have tested on are a
-Intel\textregistered{}i7--7500U @ 2.70GHz with 2 cores and 4 threads, a
+Intel\textregistered{} i7--7500U @ 2.70GHz with 2 cores and 4 threads, a
 Intel\textregistered{} i7--4770 @ 3.40GHz with 4 cores and 8 threads, a
 Intel\textregistered{} Xeon\textregistered{} E5--2620 @ 2.0GHz with 6 cores and
 12 threads, a Ryzen 7 1700 @ 3.0GHz with 8 cores and 16 threads, and the ARM
@@ -1211,7 +1233,7 @@ We stress that the y-axis may differ wildly on the benchmarks.
 }
 
 \clearpage
-\section{Intel\textregistered{}i7--7500U}
+\section{Intel\textregistered{} i7--7500U}
 \begin{figure}[ht]
   \figuregrid{laptop}
 \end{figure}
@@ -1265,7 +1287,7 @@ We stress that the y-axis may differ wildly on the benchmarks.
 \end{figure}
 
 
-\chapter{Discussion}
+\chapter{Discussion\label{ch:discussion}}
 \note{Whys. How was Rust? Why are the graphs as they are?
 What alternatives exists?}
 
