@@ -449,193 +449,176 @@ these solution ideas.
 
 \chapter{Memory Reclamation\label{ch:memory-reclamation}}
 
-\note{What is memory reclamation? Why is it hard?  What approaches are there?}
-\note{Assumed background: had OS, have programmed in C or C++.}
+Dynamic memory allocation is a feature supported by the operating system. The
+allocated memory must, sooner or later, be returned, or else there will
+eventually be no more memory to allocate. The problem of concurrent memory
+reclamation is all about finding out when it is safe to return memory to the
+OS\@. The main source of problems in this field is that the threads may read
+data, and then be preempted for an arbitrary long time; when it gets execution
+time again, we must somehow make sure that the memory addresses it obtained are
+either still valid, or that it can somehow validate them. Since threads can be
+preempted at any point in execution, validation is a hard problem.
 
-% When programming we lend memory from the operating system. This memory must be
-% returned, or else we will sooner or later run out of it. In most modern
-% programming languages, this is a feature provided by the runtime of the
-% language. We call such languages \emph{managed languages}. However, in
-% languages such as Rust, there is virtually no runtime, so this becomes a
-% concern of the programmer Garbage collection is typically the name used for
-% memory reclamation; if we want to pedantic we would say a garbage collector
-% performs memory reclamation.
-%
-% In a concurrent setting, we are concerned about the properties of our data
-% structures, such as wait-freedom, or lock-freedom.
-% \todo{rewrite this sentence}. One can make the claim that data structures
-% implemented in managed languages can never obtain some of these properties,
-% since they depend on the runtime to get execution time in order for the program
-% to be able to allocate memory. Hence, the runtime thread has to get CPU time
-% in order for the program to make progress \note{Could say this better; the
-% point is to motivate the usage of Rust.}
+Most of the mainstream programming languages today has a large runtime which
+employs a \emph{garbage collector}. The job of the garbage collector (GC) is to
+find all memory that is no longer in use, and free it. A type of tracing garbage
+colelctor is the \emph{mark-and-sweep GC}, which marks all pointers reachable
+from some ground set of the program, sweeps the memory and frees the memory that
+was not previously marked. This process involves pausing the program execution,
+and is also dependent on the runtime thread.  One of the strengths of concurrent
+systems is fail tolerance: thread may fail spuriously, but the system as a whole
+makes progress regardless. It is clear that the runtime is a single point of
+failure for systems employing one. It is therefore interesting to look at memory
+management schemes that does not use a runtime with a garbage collector.
+\todo{revisit this}
 
 The field of concurrent memory reclamation is an active one, and a lot of
-different schemes have emerged the recent years. We will look at
-\emph{Reference Counting} (RC),
-\emph{Epoch Based Reclamation} (EBR),
-\emph{Hazard Pointers} (HP),
-\note{and maybe a few others?}
-
-
-
+different schemes have emerged the recent years. We will look at \emph{Reference
+Counting} (RC), \emph{Epoch Based Reclamation} (EBR), \emph{Hazard Pointers}
+(HP), and try to give a highlight recent developments in the field.
 
 \section{Reference Counting}
-\todo{this}
-Simple, "obvious" solution. But does it work?
+Reference counting (RC) is a natural solition for memory reclamation. It was
+introduced in 1960 by G. E.  Collins\cite{collins1960method}, where it was used
+for collecting nodes of a linked list.  The idea is that we count the number of
+references to data, so that we can tell if we are holding the only reference to
+some data. When we no longer need this reference, we know it is safe to reclaim
+the memory the reference points to, since no other reference to that memory
+exists. The primary downsides of RC is that it is rather expensive, and that a
+na\"\i{}ve implementation does not reclaim cycles. Today reference counting is
+still used, although it is unusual to have it be the primary mechanism for
+memory management, due to its performance overhead.
 
-\todo{split into two paragraphs? Eventually move history part to bottom, Knuth
-style}. The idea of reference counting is that we count the number of references
-to data, so that we can tell if we are holding the only reference to some
-data. When we no longer need this reference, we know it is safe to reclaim the
-memory the reference points to, since no other reference to that memory
-exists. Reference counting first appeared in 1960 by G. E.
-Collins\cite{collins1960method}, where it was used for collecting nodes of a
-linked list. The primary downsides of RC is that it is rather expensive, and
-that a na\"\i{}ve implementation does not reclaim cycles. Today reference
-counting is still used, although not in the setting of general memory
-reclamation. \todo{source?} \note{Want to say that while RC isn't used in GC,
-it is used for other things, like \code{std::rc::Rc} stuff. Also \code{Arc},
-even more expensive}.
+Atoimc reference counting (ARC) is RC using atomic variables, and is a natural
+extention of RC\@. However, the na\"\i{}ve implementation is not correct:
+consider two threads operating on some \code{Rc<T>}. When thread $A$ want to
+create a new reference to the data, it increments the count in the \code{RC}
+object. Upon destruction, the count is decremented and the data is freed if the
+count is 0. However, it is possible that thread $B$ has a reference to the RC
+object and that it got preempted right before incrementing the count. Then the
+whole object gets freed by thread $A$, since the count is 0, and when thread $B$
+gets execution time again, it has a pointer to freed memory which it indents to
+read.
 
-% TODO: Use this for node drawing, when needed.
-%
-% \begin{figure}[ht]
-% \begin{tikzpicture}
-% \tikzset{Node/.style={
-%   rectangle split,
-%   rectangle split horizontal,
-%   rectangle split parts=2,
-%   draw,
-%   rounded corners=0.1cm
-%   }}
-%       \node [Node] (A) at (0,0) {\code{Count=3} \nodepart{second} \code{DATA} };\\
-%       \node [Node] (B) at (4,0) {\code{Count} \nodepart{second} \code{DATA} };\\
-%       \draw[->]  (0.5,-1) -- (0.5,-0.3);
-%       \draw[->]  (0,-1) -- (0,-0.3);
-%       \draw[->]  (-0.5,-1) -- (-0.5,-0.3);
-% \end{tikzpicture}
-%   \caption{Data nodes using RC}
-% \end{figure}
+A way to mitigate this problem is by indirection: we can use intermediate
+\code{Rc} nodes which are the counter and a pointer to the actual data. The
+intermediate nodes are never free'd, and by \code{CAS}ing the count to a
+sentinel value upon destruction of the data, thread $B$ can detect that it is
+about to read free'd memory and abort its operation. By allocation the \code{Rc}
+objects with a memory arena and freeing them in bulk, this might be acceptable
+for certain problems, as the data itself is not leaked, but only the \code{Rc}
+nodes, which may be comparably small.
 
-\todo{Consider adding a code listing instead of using words} Reference counting
-is a natural approach to the problem of concurrent memory reclamation. The
-first observation to make is that we need to use atomic reads and writes to
-correctly increment and decrement the reference count. However, the na\"\i{}ve
-implementation is not correct. Consider two threads operating on some
-\code{RC<T>}. When thread A want to create a new reference to the data, it
-increments the count in the \code{RC} object. Upon destruction, the count is
-decremented and the data is freed if the count is 0. However, it is possible
-that thread B has a reference to the RC object and that it got preempted right
-before incrementing the count. Then the whole object gets freed by thread A,
-since the count is 0, and when thread B gets execution time again, it has a
-pointer to freed memory which it indents to read. It is worth noting that we
-can free the \emph{data} using this scheme, but not the entire \code{RC} node,
-since the \code{count} field may be set to a special value indicating that its
-data is freed.
-
-\note{Add note on differential RC:\@
-http://www.1024cores.net/home/lock-free-algorithms/object-life-time-management/differential-reference-counting}
-
-
-% TODO:  Code listing sample here, with custom lineno prefix
-%
-% \begin{lstlisting}[label=lst:rc-broken,
-%                    numberblanklines=false,
-%                    % TODO: would like to not copy this all over the place
-%                    numberstyle=\color{gray}\ttfamily{}RC]
-% node = load_node();
-% node.count += 1;
-% data = node.data;
-% // use the node
-% node.count -=1;
-% if node.count == 0
-%   free(node);
-% \end{lstlisting}
-
+Despite the problem of atomic reference counting, there are still use cases for
+it. A thread $A$ may create an \code{Arc} object, and make a copy of its
+reference to it, incrementing the count, and only \emph{then} pass it to another
+thread. This avoids the problem in the previous paragraphs, since the only
+threads that need to increment the reference count is already holding onto
+another reference, thus making it impossible that the count reaches zero before
+we get to increment it. When all threads have dropped their reference, the
+count will drop to zero, and the \code{Arc} will be free'd, not risking that any
+other thread is just about to increment its count.
+\clearpage
 \section{Epoch Based Reclamation}
+
 Epoch Based Reclamation (EBR) was introduced by Fraser
 in~\cite{fraser2004practical}. It is a reclamation scheme based on the
-observation that most programs have no references to data structure memory in
-between of operations on the structure. The time interval in between
+observation that most programs have no references to internal data structure
+memory in between of operations on the structure. The time interval in between
 operations on the data structure are therefore safe-points (also called grace
-periods) for memory reclamation to occur \todo{add something more here}
-
-EBR uses the concept of an \emph{epoch}, a global timestamp which we use to
-find out when it is safe to reclaim retired memory. The epoch is a global
-counter. In addition we have a global list with one entry for each running
-thread, which the thread uses for registering the last epoch they read, as well
-as whether they are currently performing an operation. We call a thread
-performing an operation \emph{pinned}, and the action of marking and unmarking
+periods) for memory reclamation to occur, since we do not risk invalidating any
+data that other threads are using in this period. EBR uses the concept of an
+\emph{epoch}, a global timestamp which we use to find out when it is safe to
+reclaim retired memory. The epoch is a global counter. In addition we have a
+global list with one entry for each running thread, which the threads use for
+broadcasting their state, which includes the last epoch they read as well as
+whether they are currently performing an operation. We call a thread performing
+an operation \emph{pinned}, and the action of marking and unmarking
 \emph{pinning} and \emph{unpinning} the thread.
 
-When starting an operation a thread reads the global epoch and saves it in its
+When starting an operation a thread reads the global epoch, stores it in its
 entry, and pins the thread. Upon retiring memory the thread marks the memory
-with the global epoch and puts it in a \emph{limbo list} \note{replace with the
-three lists instead of marking?}. Every once in a while, the threads try to
-increment the epoch. The epoch can only be incremented if all pinned threads
-have seen the current epoch. This way we know that all threads with references
-to memory which may be freed by the data structure is either in the current
-epoch, or in the previous epoch. Lastly, after incrementing an epoch to $e$ we
-know that garbage that was added in epoch $e-2$ is safe to be freed.
-\note{Should clarify here. Note that the potential counter example is A a wants
-to delete X, B incs epoch and reads X, A deletes X, and incs epoch. But, now X
-is marked with e+1, even though A was in e, since we're reading the global
-epoch on delete.}
+with the global epoch and puts it in a \emph{limbo list}. Every once in a while,
+the threads try to increment the epoch, which succeeds if all current pinned
+threads have seen the current epoch. Note that we only have to look through the
+thread entries once: if another thread is pinned while we are searching, it will
+read the current epoch, and cause no problems for us. This requirement for
+epoch incrementation means that all threads that have references to memory we
+might want to free is either in the current or the previous epoch. Lastly, after
+incrementing an epoch to $e$ we know that garbage that was added in epoch $e-2$
+is safe to be freed.
 
-\note{Add example from comere?}
+Note that it is important that the thread inserting into the limbo list uses the
+global epoch, and not the epoch it read when it was pinned. If we use the
+previously read epoch, we may run into the following scenario:
+\begin{enumerate}
+  \item $A$ pins the thread at $e=5$, and wants to remove $O$ from the data structure.
+  \item $B$ increments the epoch to $e=6$, and obtains a reference to $O$.
+  \item $A$ unlinks $O$ from the data structure, and adds it to the limbo list,
+    with $e=5$. $A$ unpinns, and increments the epoch to $e=7$.
+  \item It is now safe, by our rules, to free $O$, although $B$ is still holding
+    a reference to it.
+\end{enumerate}
+By reading the global epoch before pushing to the list we avoid this problem,
+since $O$ is unlinked from the data structure before reading the epoch. This
+makes it impossible for $B$ to have incremented the epoch, and \emph{then} get a
+reference to $O$, without $A$ reading the incremented epoch.
 
-There are still a few challenges with EBR A problem is that we are not
-allowed to keep references to data across operations, since the thread must be
-pinned while we are using the references. A natural way to mitigate this
-constraint is to leave the thread pinned. However, this will stop the
-advancement of the global epoch, and thus effectively halting the memory
-reclamation. An immediate consequence of this is that EBR is not lock-free.
-\note{Limits/challenges of EBR. Add more.}
-
-\todo{Add proof? Pseudocode of stuff?}
+EBR is very popular, due to its extremely low overhead.  However, there are
+still a few challenges with EBR\@. A problem is that we are not allowed to keep
+references to data across operations, since the thread must be pinned while we
+are using the references. A natural way to mitigate this constraint is to leave
+the thread pinned. However, this will stop the advancement of the global epoch,
+and thus effectively halting the memory reclamation. An immediate consequence of
+this is that EBR is not lock-free, which is not acceptable for all use cases.
 
 
 \section{Hazard Pointers}
 
-Hazard pointers was introduced by Michael in~\cite{michael2004hazard}.
-The paper by Michael formalizes hazardous pointers, and includes a proof of
-correctness. We will settle for a informal view of them. It is
-based on the observation that in most operations on data structure we only need
-a small constant number of references to memory that is shared between running
-threads. The technique exploits this by allowing each thread to register the
-pointers, called \emph{hazard pointers}, the thread wants to use, but which it
-cannot be sure are valid. We call such pointers \emph{hazardous}. The number of
+Hazard pointers were introduced by Michael in~\cite{michael2004hazard}.  The
+paper formalizes hazardous pointers, and includes a proof of correctness. We
+will settle for a informal view of them. It is based on the observation that in
+most operations on data structure we only need a small constant number of
+references to memory that is shared between running threads. The technique
+exploits this by allowing each thread to register the pointers, called
+\emph{hazard pointers}, the thread wants to use, but which it cannot be sure are
+valid. We call potentially invalid pointers \emph{hazardous}. The number of
 pointers we need varies with the algorithm performed, but a typical value is one
 or two.
 
-As an example, the $next$ pointers in a linked list would be registered as
-hazardous, as they might point to memory that is already removed from the list.
-By registering the pointers that are hazardous, other threads can refrain from
-changing the referenced data. As with RC there are some complications: the
-thread might be preempted after reading the hazardous pointer, but before
-registering it as hazardous; then another thread may have removed the referenced
-data. For this reason, we must \emph{validate} the reference after registering
-it as hazardous. This can be problematic for structures in which there is no
-obvious way of verifying the data. For other structures this is just a matter of
-reading a pointer again.
+After reading a hazardous pointer the thread registers it as one of its hazard
+pointers. It then have to \emph{validate} that the pointer is still in the data
+structure, as it might have been removed in between the initial read and the
+hazard registration. When we want to free memory we look through the hazard
+pointers of all running threads. We note that again, as with EBR, a single pass
+through this list is sufficient: the object is unlinked before searching, so if
+a thread has a reference to it, but is yet to register it as one of its hazard
+pointers, then it will fail validation.
+
+If the memory is registered in a thread, we cannot immediately free the
+memory. We now have two options: wait for the
+thread to finish, or defer the deallocation.
+By waiting on the thread, we are relying on that the other thread will ever
+deregister the pointer. Hence, we give up lock-freedom, as this is prone to
+deadlocking. It has, however, very low overhead, and will be very fast assuming
+all threads are fairly scheduled and have similar work load.
+Deferring the deallocation is a safer option, although it have a higher
+overhead, eg.\ of pushing the pointer onto a queue. We would then occationally
+visit the queue and see if any of the pointers in it have been deregistered by
+all threads.
 
 A challenge in usage of HP is that we need to identify which pointers in our
 algorithms are hazardous. In comparison, we have no such concerns in EBR, in
 which we only need to register memory as garbage when we remove it from the data
 structure (we do need to make sure that this memory is only registered by a
-single thread). This imposes the choice of memory reclamation onto the
-programmer of the data structures using them. In other words, it is unlikely
-that HP can be used ``transparently'', in the sense that we can seamlessly
-change between, say, HP and EBR\@.
-
-\todo{Revisit RC here, with the stuff from the blog?
-Or maybe its better to just put it at the end of the subsection.}
-
+single thread). Another challenge is that of validation, as there is no generic
+way to do this. For most structures there is an obvious way of doing this. For
+instance, in a queue we can validate the front element by reading the
+\code{head} pointer again, observing that it has not changed. However, it stil
+requires local knowledge of the data strcture in question.
 
 \section{Other Schemes}
-\note{We don't have time to implement all interesting schemes,
-but it would be nice to have them in the report}
+\todo{this. Debra, StackTrack, ++? We only need to write a paragraph on each or something.}
 
 
 \chapter{Methodology\label{ch:methodology}}
