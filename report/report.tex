@@ -1169,19 +1169,27 @@ We stress that the y-axis may differ wildly on the benchmarks.
 
 \newcommand{\benches}[1]{
   \begin{figure}[ht]
-  \foreach \bench in
-    {queue_pop,queue_push,queue_transfer,list_remove,list_real}
-  {
-    \begin{subfigure}{0.32\textwidth}
-      \centering \footnotesize\code{\bench}
-      \includegraphics[width=\textwidth]{plots/#1-b:\bench.pdf}
+    \centering
+    \begin{subfigure}{0.40\textwidth}
+      \centering \footnotesize\code{Queue::Pop}
+      \includegraphics[width=\textwidth]{plots/#1-b:queue_pop.pdf}
     \end{subfigure}
-  }
+    \begin{subfigure}{0.40\textwidth}
+      \centering \footnotesize\code{Queue::Transfer}
+      \includegraphics[width=\textwidth]{plots/#1-b:queue_transfer.pdf}
+    \end{subfigure}
+    \\
+    \begin{subfigure}{0.40\textwidth}
+      \centering \footnotesize\code{List::Remove}
+      \includegraphics[width=\textwidth]{plots/#1-b:list_remove.pdf}
+    \end{subfigure}
+    \begin{subfigure}{0.40\textwidth}
+      \centering \footnotesize\code{List::Real}
+      \includegraphics[width=\textwidth]{plots/#1-b:list_real.pdf}
+    \end{subfigure}
     \caption{Benchmarks relative to no memoryreclamation for \code{#1}}
   \end{figure}
 }
-
-\benches{ryzen}
 
 \newcommand{\figuregrid}[1]{
   \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{Queue::push}}}
@@ -1199,12 +1207,6 @@ We stress that the y-axis may differ wildly on the benchmarks.
   \foreach \scheme in {nothing, crossbeam, ebr, hp, hpspin} {%
     \begin{subfigure}{0.20\textwidth}
       \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:queue_transfer}
-    \end{subfigure}}
-    \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{List::remove}}}
-  \makebox[0.40\textwidth]{}
-  \foreach \scheme in {ebr, hp, hpspin} {%
-    \begin{subfigure}{0.20\textwidth}
-      \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:list_remove}
     \end{subfigure}}
 }
 
@@ -1228,8 +1230,22 @@ We stress that the y-axis may differ wildly on the benchmarks.
 
 \clearpage
 \section{Ryzen 7 1700}
+
+\benches{ryzen}
+
 \begin{figure}[ht]
   \figuregrid{ryzen}
+
+  % TODO: move this into \figuregrid
+    \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{List::remove}}}
+    \begin{subfigure}{0.20\textwidth}
+      \includegraphics[width=\textwidth]{plots/ryzen-s:nothing-b:list_remove}
+    \end{subfigure}
+  \makebox[0.20\textwidth]{}
+  \foreach \scheme in {ebr, hp, hpspin} {%
+    \begin{subfigure}{0.20\textwidth}
+      \includegraphics[width=\textwidth]{plots/ryzen-s:\scheme-b:list_remove}
+    \end{subfigure}}
     \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{List::Real}}}
     \begin{subfigure}{0.20\textwidth}
       \includegraphics[width=\textwidth]{plots/ryzen-s:nothing-b:list_real}
@@ -1239,6 +1255,7 @@ We stress that the y-axis may differ wildly on the benchmarks.
     \begin{subfigure}{0.20\textwidth}
       \includegraphics[width=\textwidth]{plots/ryzen-s:\scheme-b:list_real}
     \end{subfigure}}
+
 \end{figure}
 
 \clearpage
