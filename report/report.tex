@@ -16,9 +16,7 @@
 \usepackage{inconsolata}
 \usepackage{libertinust1math}
 \usepackage[T1]{fontenc}
-% \definecolor{font}{RGB}{40, 40, 40}
-% TODO: remove
-% \color{font}
+\catcode`\_=12
 
 \begin{document}
 \title{Concurrent Memory Reclamation on ARM}
@@ -761,8 +759,10 @@ saw in Section~\ref{sec:aba}.
       \centering
       \begin{tikzpicture}
         \node [lnode,label={A}] (A)              {\code{data} \nodepart{second} \code{}};
-        \node [lnode,label={\color{lightgray}B},color=lightgray] (B) [right of=A] {\code{data} \nodepart{second} \code{}};
-        \node [lnode,label={\color{lightgray}X},color=lightgray] (X) [right of=B] {\code{data} \nodepart{second} \code{}};
+        \node [lnode,label={\color{lightgray}B},color=lightgray] (B) [right of=A]
+          {\code{data} \nodepart{second} \code{}};
+        \node [lnode,label={\color{lightgray}X},color=lightgray] (X) [right of=B]
+          {\code{data} \nodepart{second} \code{}};
         \node [lnode,label={C}] (C) [right of=X] {\code{data} \nodepart{second} \code{}};
         \draw[-latex] ($ (A.west) - (0.5,0) $) -- (A.west);
         \draw[ptr-g,color=lightgray] ($ (B.east) - (0.25,0) $) -- (X.west);
@@ -772,7 +772,7 @@ saw in Section~\ref{sec:aba}.
           (0.5, 0) $);
       \end{tikzpicture}
       \caption{End result. B and X is no longer reachable from the head of the
-        list.\label{fig:list-remove-b}}
+        list.\label{fig:list-remove-c}}
   \end{subfigure}
   \caption{List removal which removes two elements when there is a concurrent
   insertion. This happens because the \code{compare-and-swap} operation
@@ -1078,6 +1078,13 @@ which the schemes performs differently. We have \todo{} different benchmarks:
     random order. Then each thread removes \code{N/t} unique elements, where
     \code{t} is the number of threads running. This ensures that all removals
     are succeding and that the list is empty at the end.
+  \item[\code{List::real}:] We simulate a real world scenario, in which
+    we perform different operations on the list. Which operation is performed is
+    based on the following distribution: 40\% \code{insert}, 20\% \code{remove},
+    20\% \code{remove\_front}, and 20\% \code{search}. The list is pre populated
+    with some elements, in order for the removals not to fail often early on.
+    The numbers which we insert, remove, or search for are also randomly
+    generated.
 \end{description}
 
 An interesting problem that turned up when benchmarking is the following: how do
@@ -1160,6 +1167,22 @@ offers lower overhead of its operations.
 
 We stress that the y-axis may differ wildly on the benchmarks.
 
+\newcommand{\benches}[1]{
+  \begin{figure}[ht]
+  \foreach \bench in
+    {queue_pop,queue_push,queue_transfer,list_remove,list_real}
+  {
+    \begin{subfigure}{0.32\textwidth}
+      \centering \footnotesize\code{\bench}
+      \includegraphics[width=\textwidth]{plots/#1-b:\bench.pdf}
+    \end{subfigure}
+  }
+    \caption{Benchmarks relative to no memoryreclamation for \code{#1}}
+  \end{figure}
+}
+
+\benches{ryzen}
+
 \newcommand{\figuregrid}[1]{
   \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{Queue::push}}}
   \foreach \scheme in {nothing, crossbeam, ebr, hp, hpspin} {%
@@ -1207,6 +1230,15 @@ We stress that the y-axis may differ wildly on the benchmarks.
 \section{Ryzen 7 1700}
 \begin{figure}[ht]
   \figuregrid{ryzen}
+    \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{List::Real}}}
+    \begin{subfigure}{0.20\textwidth}
+      \includegraphics[width=\textwidth]{plots/ryzen-s:nothing-b:list_real}
+    \end{subfigure}
+  \makebox[0.20\textwidth]{}
+  \foreach \scheme in {ebr, hp, hpspin} {%
+    \begin{subfigure}{0.20\textwidth}
+      \includegraphics[width=\textwidth]{plots/ryzen-s:\scheme-b:list_real}
+    \end{subfigure}}
 \end{figure}
 
 \clearpage
