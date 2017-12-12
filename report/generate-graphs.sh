@@ -169,5 +169,5 @@ function relative_barplots() {
   done
 }
 
-# plots_comparing_threads
+plots_comparing_threads
 relative_barplots

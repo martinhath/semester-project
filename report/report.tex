@@ -565,8 +565,7 @@ the thread pinned. However, this will stop the advancement of the global epoch,
 and thus effectively halting the memory reclamation. An immediate consequence of
 this is that EBR is not lock-free, which is not acceptable for all use cases.
 
-
-\section{Hazard Pointers}
+\section{Hazard Pointers\label{sec:hazard-pointers}}
 
 Hazard pointers were introduced by Michael in~\cite{michael2004hazard}.  The
 paper formalizes hazardous pointers, and includes a proof of correctness. We
@@ -588,17 +587,15 @@ through this list is sufficient: the object is unlinked before searching, so if
 a thread has a reference to it, but is yet to register it as one of its hazard
 pointers, then it will fail validation.
 
-If the memory is registered in a thread, we cannot immediately free the
-memory. We now have two options: wait for the
-thread to finish, or defer the deallocation.
-By waiting on the thread, we are relying on that the other thread will ever
-deregister the pointer. Hence, we give up lock-freedom, as this is prone to
-deadlocking. It has, however, very low overhead, and will be very fast assuming
-all threads are fairly scheduled and have similar work load.
-Deferring the deallocation is a safer option, although it have a higher
-overhead, eg.\ of pushing the pointer onto a queue. We would then occationally
-visit the queue and see if any of the pointers in it have been deregistered by
-all threads.
+If the memory is registered in a thread, we cannot immediately free the memory.
+We now have two options: wait for the thread to finish, or defer the
+deallocation.  By waiting on the thread, we are relying on that the other thread
+will ever deregister the pointer. Hence, we give up lock-freedom, as this is
+prone to deadlocking. It has, however, very low overhead, and will be very fast
+assuming all threads are fairly scheduled and have similar work load.  Deferring
+the deallocation is a safer option, although it have a higher overhead, eg.\ of
+pushing the pointer onto a queue. We would then occationally visit the queue and
+see if any of the pointers in it have been deregistered by all threads.
 
 A challenge in usage of HP is that we need to identify which pointers in our
 algorithms are hazardous. In comparison, we have no such concerns in EBR, in
@@ -615,33 +612,29 @@ requires local knowledge of the data strcture in question.
 
 
 \chapter{Methodology\label{ch:methodology}}
-\note{How did we implement the schemes? What choices did we have to take?
-Whys. Also implementation problems, testing techniques, profiling setup etc.
-Include std allocator change}
 
+In this chapter we will look at all the practicalities of implementing systems
+for concurrent memory reclamation. We start by look at implementation of both the
+data structures we need and the reclamation schemes; then we discuss testing of
+concurrent system; finally we look at benchmarking the system.
 
 \section{Implementation}
-There is often a disconnect between the idea of a system and the implementation
-of that system. Algorithms are usually explained at such a high level that a
-straight forward implementation in a given language is either impossible,
-impractical, or leads to atypical code. Programming is more craft than
-science, so when implementing a system we must reconsider the system in the
-context of the language we are using.
 
-The data structures were first implemented without any regard for memory
-reclamation. Allocated memory were simply leaked when no longer needed.
+Now that we have an idea of \emph{what} we want to implement we must change our
+mindset into \emph{how} we want to implement it. \todo{somthing more here?} We
+note that due to time limitations the implementation is yet to be properly
+optimized. The data structures were first implemented without any regard for
+memory reclamation. Allocated memory were simply leaked when no longer needed.
 
 
-\subsection{Atomics}
-
-\note{Write about atomic types. If this is to be a section we need to clean up
-the code in the atomics.rs files. We should probably also look into having HP as
-a type in there, instead of doing the handle stuff. Then we can statically check
-that hazardous accesses are behind a HP.}
+\subsection{Atomics\label{sec:atomics}}
 
 As mentioned in Section~\ref{sec:rust}, it is idiomatic Rust to unitize the type
-system in order to help ourselves. We have made other atomic types in addition
-to those in the standard library in order to capture wanted semantics.
+system in order to help ourselves. We have made new atomic pointer types in addition
+to those in the standard library in order to capture wanted semantics. Initially
+these were copied from the Crossbeam project\cite{crossbeam-msqueue}, but they have been adjusted as
+needed. Most notably a \code{HazardPtr} type was created, which handles
+registration and deregistration of the hazard pointer automatically.
 
 
 \subsection{Data Structures}
@@ -658,22 +651,20 @@ of the project.
 \subsubsection{Queue}
 
 The queue implemented is a Michael-Scott Queue, as described
-in~\cite{michael1996simple}. \todo{Consider explaining how the MSqueue works}
-The \code{Queue} and \code{Node} structs, as well as the signatures for the
-public functions are listed in Listing~\ref{lst:msqueue}. The implementation of
-\code{push} and \code{pop} is heavily inspired of the implementation from
-Crossbeam\cite{crossbeam-msqueue}. We support \code{pop\_if}, since we use this
-in the implementation of EBR. \code{push} allocates the memory needed for the
-node, which in micro benchmarks have been shown to take the majority of the time:
-allocation averaged at 54ns, while the rest of the procedure averaged at 30ns.
-A natural optimization of this problem is to allocate nodes from a memory arena
-or similar, such that the allocation overhead is amortized over multiple calls
-to \code{push}. However, this seriously increases the complexity of the memory
-management schemes.
+in~\cite{michael1996simple}. The \code{Queue} and \code{Node} structs, as well
+as the signatures for the public functions are listed in
+Listing~\ref{lst:msqueue}. The implementation of \code{push} and \code{pop} is
+heavily inspired of the implementation from Crossbeam.  We support
+\code{pop\_if}, since we use this in the implementation of EBR.  \code{push}
+allocates the memory needed for the node, which in micro benchmarks have been
+shown to take the majority of the time: allocation averaged at 54ns, while the
+rest of the procedure averaged at 30ns.  A natural optimization of this problem
+is to allocate nodes from a memory arena or similar, such that the allocation
+overhead is amortized over multiple calls to \code{push}. However, this
+seriously increases the complexity of the memory management schemes.
 
 \begin{figure}[ht]
-\begin{lstlisting}[caption=Structs for the Michael-Scott
-Queue,label=lst:msqueue,numbers=none]
+\begin{lstlisting}[caption=Structs for the Michael-Scott Queue,label=lst:msqueue]
 pub struct Node<T> {
     data: ManuallyDrop<T>,
     next: Atomic<Node<T>>,
@@ -700,7 +691,6 @@ also makes it possible to \emph{do} drop the data. This is used in the
 values in the queue to be cleaned up correctly when the queue is destroyed.
 
 \subsubsection{List\label{sec:impl-list}}
-\note{how did we implement the list?}
 
 The list we have implemented is based on the list presented by Michael
 in~\cite{michael2002high}. The implementation is similar to the Michael-Scott
@@ -709,13 +699,13 @@ operation, which is almost identical to \code{Queue::pop}. However, the default
 insertion operation of the List pushes the inserted element to the beginning of
 the list, such that \code{List::insert} and \code{List::remove\_front} has LIFO
 semantics. We also support removals for values which are comparable (implements
-\code{PartialEq}). \note{assume we have \code{insert\_after} or something.} This
-procedure complicates the implementation: consider the list in
-Figure~\ref{fig:list-remove}. We want to remove node B, so we swing
+\code{PartialEq}). This procedure complicates the implementation: consider the
+list in Figure~\ref{fig:list-remove}. We want to remove node B, so we swing
 \code{A.next} from B to C. However, at the same time, a thread might insert a
 new node X in between B and C. When we now change \code{A.next} to \code{C}, we
 have removed two items: B and X. This is an example of the ABA problem, which we
-saw in Section~\ref{sec:aba}.
+saw in Section~\ref{sec:aba}. Similar problems may arise even without the
+possibility of middle-of-the-list insertions.
 
 \begin{figure}[ht]
   \begin{subfigure}[b]{\textwidth}
@@ -787,10 +777,11 @@ by their size, such that \code{u32}s are only on addresses where the four least
 significant bits are zero. Bytes are ``aligned'' on 1 byte boundaries,
 effectively meaning they are not aligned at all. Since we know that the pointers
 we have points to larger objects, the LSB of the pointer itself is free. We use
-this to tag the node.
-\todo{double check which node we are tagging}
-\note{Write about how insert checks for tag. What about searches? Note on search
-- if the node is about to be removed, what do we report?}
+this to tag the node. A consequence of tagging is that all operations must check
+the \code{next} pointers for tags, and abort their operation if it contains one,
+since the ndoe they are currently on are being removed. This is especially a
+problem when using hazard pointers, as the next node is not protected, and may
+have been both removed from the list as well as deallocated.
 
 
 \subsection{Epoch Based Reclamation}
@@ -804,23 +795,11 @@ list of thread markers, \code{List<ThreadMarker>}. This is all stored in the
 which contains a macro for lazy-initialized static variables. The thread local
 data is stored in the \code{LocalState} struct, and is initialized using the
 \code{thread\_local!} macro, which is in the Rust standard library. The thread
-local data is a pointer to the threads list entry, a counter of how many times
-the thread has been pinned, and buffered garbage.
+local data contains three things: a pointer to the threads list entry, a counter
+of how many times the thread has been pinned, and buffered garbage (see below).
+Figure~\ref{fig:ebr-impl} shows graphically the global and local data.
 
-Memory we want to free is hidden behind the \code{Garbage} struct, which
-abstracts away the logic of calling the right destructor when we free the
-memory. \todo{rewrite this part}. This is needed since
-\code{LocalState::add\_garbage} takes an \code{Owned<T>}, an owned pointer to
-any data type. The type information is then lost for the rest of the garbage
-pipeline. However, upon destruction we need to know the type of the data we are
-dropping. The way we have solved this is by moving the data to a closure, so
-that the closure keeps track of the type of the data. The closure is never
-invoked, but upon dropping the closure all of the values moved to it are
-dropped. A advantage of this solution is that it is simple to implement. A
-disadvantage is that the closure needs to be heap allocated, which increases the
-overhead of adding garbage.  \todo{implement tags or something, and profile?}
-
-\begin{figure}[ht!]
+\begin{figure}[hb]
   \begin{tikzpicture}[ntitle/.style={node distance=1cm, font=\footnotesize}]
     \node (global-title) [anchor=west] {\normalsize\textbf{Global State}};
 
@@ -913,6 +892,21 @@ overhead of adding garbage.  \todo{implement tags or something, and profile?}
     using itself.\label{fig:ebr-impl}}
 \end{figure}
 
+Memory we want to free is hidden behind the \code{Garbage} struct, which
+abstracts away the logic of calling the right destructor when we free the
+memory. This is needed since \code{LocalState::add\_garbage} takes an
+\code{Owned<T>}, an owned pointer to \emph{any} data type, as we want to be able
+to use the same reclamation system for all types of memory. The type information
+is then lost for the rest of the garbage pipeline. However, upon destruction we
+need to know the type of the data we are dropping. The way we have solved this
+is by moving the data to a closure, so that the closure keeps track of the type
+of the data. The closure is never invoked, but upon dropping the closure all of
+the values moved to it are dropped. A advantage of this solution is that it is
+simple to implement. A disadvantage is that the closure needs to be heap
+allocated, which increases the overhead of adding garbage. We note that
+Crossbeam have mitigated the problem of heap allocation by stack allocating
+closures that are ``small enough''.
+
 We note that both the thread entry list and garbage queue themselves must be garbage
 collected, and that we use EBR on them. This poses a problem: for each
 garbage in the list, we need a node. However, that node itself will be garbage
@@ -926,15 +920,15 @@ When using the collections backed by EBR, we must first obtain a \code{Pin},
 which is a proof that the current thread is pinned. All methods on any
 collection requires a pin as the last argument, even though the methods may not
 actually use the pin in the method body. There is no way to obtain the pin
-directly: users must call the \code{pin} function, and pass in a closure which
-is then given the pin as an argument. Listing~\ref{lst:pin-ex} shows example
-usage on a queue. This design decision is made in order to discourage users to
-grab a pin and keep it for a long amount of time, as this will effectively stop
-the memory reclamation. Having a closure also makes it very clear when the
-thread stops being pinned. Internally in the \code{ebr} module, there is a
-method called \code{Pin::fake}, which makes a pin without actually pinning the
-thread. This is an optimization used when we know that we have exclusive access
-on certain memory.
+directly: users \emph{must} call the \code{pin} function, and pass in a closure
+which is then given the pin as an argument. Listing~\ref{lst:pin-ex} shows
+example usage on a queue. This design decision is made in order to discourage
+users to grab a pin and keep it for a long amount of time, as this will
+effectively stop the memory reclamation. Having a closure also makes it very
+clear when the thread stops being pinned. Internally in the \code{ebr} module,
+there is a method called \code{Pin::fake}, which makes a pin without actually
+pinning the thread. This is an optimization used when we know that we have
+exclusive access on certain memory.
 
 \begin{figure}[ht!]
 \begin{lstlisting}[caption=Example usage of the \code{pin} fucntion,
@@ -954,25 +948,30 @@ epoch.  If we succeed at incrementing the epoch we also free as much garbage as
 allowed from the global garbage list. This scheme is in a sense fair, in that
 threads that pin a lot supposedly create a lot of garbage, and these threads
 will also have to clean up once in a while. It does however suffer from the fact
-that a single thread is set to clean up all the garbage from other threads.
-\todo{As I'm writing this, I realize that this is a terrible idea. Should fix.}
+that a single thread is set to clean up all the garbage from potentiall all
+other threads.  This increases the variance of the overhead of EBR, which is
+confirmed experimentally in Chapter~\ref{ch:results}. An idea for an
+alternative implementation could register globally that all threads are to
+collect a smaller amount of garbage if they enter the \code{pin}
+function\footnote{Norwegians will recognize this concept as \emph{dugnad}}.
 
 The \code{Pin} struct contains a method for retiring garbage, aptly called
 \code{add\_garbage}. This method handles the thread local caching of garbage
 objects into a \code{Bag}, and pushes the bag with the current epoch into the
 global garbage queue when the bag is full. It does not support flushing the
 current \code{Bag} (that is, adding it to the global queue even when it is not
-full), although this is trivial to implement. \todo{What happens to garbage
-when a thread dies? Leak?} Typical usage of \code{add\_garbage} is to make a
-node unreachable by its data structure, read the data needed from it, and then
-call \code{add\_garbage} with an \code{Owned<Node<T>>}.  \code{pin} and
-\code{Pin::add\_garbage} are the only two methods a user of EBR needs to use.
+full), although this is trivial to implement. Typical usage of
+\code{add\_garbage} is to make a node unreachable by its data structure, read
+the data needed from it, and then call \code{add\_garbage} with an
+\code{Owned<Node<T>>}.  \code{pin} and \code{Pin::add\_garbage} are the only two
+methods a user of EBR needs to use.
 
-The thread entry list is a potential memory problem:
-each thread makes an entry the first time \code{pin} is called, and this entry
-is never removed. Thus, if the system keeps creating threads which crashes right
-after calling \code{pin}, the list will quickly grow, and its elements will
-never be removed. This problem can be mitigated by removing the entry from the
+The thread entry list is a potential memory problem: each thread makes an entry
+the first time \code{pin} is called, and this entry is only removed if the
+thread shuts down gracefully. Thus, if the system keeps creating threads which
+crashes right after calling \code{pin}, the list will quickly grow, and its
+elements will never be removed, which will leak memory and severely increase the
+overhead of EBR. This problem can be mitigated by removing the entry from the
 list if the thread shuts down gracefully; however this is still a problem if
 threads crashes. One solution could be to mark the entries with a timestamp, and
 remove entries that have been inactive for too long, as well as to set the
@@ -984,42 +983,62 @@ is mainly theoretical.\label{sec:thread-cleanup}
 \subsection{Hazard Pointers}
 
 The scheme for hazard pointers is simpler than that of EBR.\@ Each thread have a
-\code{ThreadEntry} which contains a fixed size array of hazard pointers, which
-are stored as \code{AtomicUsize}. The number of hazard pointers is stored in a
-constant. The entries is stored in a global list, and each thread has a local
-pointer to its entry in the list. The \code{Ptr} struct is extended with a
-\code{hazard} method, which makes a \code{HazardPtr} struct.  \code{HazardPtr}
-wraps an address which, and contains methods for registering and deregistering
-the pointer in the threads list, checking if the pointer is registered by other
-threads, and a spin-loop for waiting until all other threads have deregistered
-the pointer.
+\code{ThreadEntry} which contains a fixed size array of hazard pointers. A
+hazard pointer is stored as a \code{AtomicUsize}.  The number of hazard pointers
+is stored in a constant. The entries are stored in a global list, and each
+thread has a local pointer to its entry in the list. The \code{Ptr} struct is
+extended with a \code{hazard} method, which makes a \code{HazardPtr} struct.
+\code{HazardPtr} utilizes the RAII paradigm by registering itself in its
+constructor and deregistering itself in its \emph{drop} implementation. This way
+users know that a pointer is protected if they have it as a \code{HazardPtr}. It
+also contains methods for checking if its unique (that is, no other thread has
+marked the same address as a hazard pointer).  Logically, a \code{HazardPtr} is
+a proof that the pointer is safe to use by the thread. There is no abstraction
+around the validation of the hazard pointers; this has to be done manually, and
+was inlined in all places necessary.
 
-Logically, a \code{HazardPtr} is a proof that the pointer is safe to use by the
-thread. There is no abstraction around the validation of the hazard pointers;
-this has to be done manually. Deregistering the hazard pointer is done in its
-destructor.
+As we saw in Section~\ref{sec:hazard-pointers} we have primarily two ways
+of handling freeing of data protected by hazard pointers: waiting and deferring.
+We have implemented both, using Rusts \emph{conditional compilation}, in which
+either variant is enabled through a flag passed to the compiler.
 
-\note{So far, HPs are freed after spinning. We should probably make a global
-queue of retired HPs, and look through them every once in a while. Could use
-\code{hazard()} to hijack execution?}
+\subsubsection{Deferred Freeing} In deferred freeing, the implementation of HP
+becomes more similar to that of EBR\@. We used the same \code{Garbage} struct as
+in EBR to handle garbage types. We did not need to port over \code{Bag}, but
+rather spun on contention of the hazard pointers for the nodes, as this queue
+would have less contention.  The \code{hazard()} method on the atomic pointer
+types from Section~\ref{sec:atomics} hijacks the program execution for freeing,
+similar to the \code{pin} function in EBR\@. The hazard pointer is buffered
+locally and then pushed into a global list. Occationally we pop the hazard
+pointer element of the queue if the pointer is unique. If the pointer is not
+unique, we give up.
+
+\subsubsection{Wait and Free}
+The waiting scheme is simpler. When we want to free data protected by a hazard
+pointer, we iterate over the global list of pointers and look for registered
+pointers to the same address. If we find one, we spin until it is deregistered.
+This gives up lock-freedom, but the overhead is minimal, assuming fairly
+scheduled threads.
 
 
+\section{Testing}
+Testing is an important part of programming, even more so in concurrent
+programming. Edsger Dijkstra famously said ``Testing shows the presence, not the
+absence of bugs''\cite{asd}. In the concurrent world we should be considered
+lucky if our tests even show the presence of the bugs they are intended to
+catch.
 
-
-
-\section{Verification}
-Programming concurrent systems is hard. Verifying \emph{any} system is also
-hard. Therefore, we are lead to believe that verifying a concurrent system is
-\emph{very} hard. This seems to be the case \note{this is probably too dumb
-and ``funny''}.
-
-While developing, we used unit tests. See Section~\ref{sec:rust-test} for a
-primer on writing tests in Rust.
-
+Our approach to testing is simple. We write regular tests, and run them enough
+times to make it improbable that any scheduling of the threads can cause
+problems. While developing, we used unit tests. See Section~\ref{sec:rust-test}
+for a primer on writing tests in Rust. Eventually, the benchmarks were ran as
+tests, since the optimization done by the compiler revealed even more bugs.
 Testing were primarily done on the development machines of the author, which are
-all \code{x86} machines. \todo{add note on bugs on ARM, if any}
+all \code{x86} machines. Since we decided early on to only use the \code{SeqCst}
+ordering, which removes most differences between x86 and ARM, we experienced no
+bugs on ARM that was not already discovered on the \code{x86} machines.
 
-The majority of the so-far found bugs in the system is memory bugs. Use after
+The majority of the so-far found bugs in the system are memory bugs: use after
 free bugs, double free bugs, illegal memory accesses, and memory leaks. Double
 frees and illegal memory accesses are usually hard faults, such that the
 programs execution stops, and we are notified that eg. \code{0x8} is indeed not
@@ -1032,8 +1051,21 @@ operations, tracks allocations and frees, and is able to report most, if not
 all, memory problems. One minor problem with using Valgrind with Rust is that
 Valgrind has incomplete support of the default allocator in Rust,
 \code{jemalloc}\cite{jemalloc}. However, changing the allocator in Rust to the system
-allocator, which Valgrind supports fully, is possible.
+allocator, which Valgrind supports fully, is possible, and takes only four lines
+of code in the \code{lib.rs} file of the crate. It does, however, require us to
+use the nightly build of the compiler, as the API is not considered stable.
 
+A downside with Valgrind is the decrease in runtime it imposes. Many hours have
+been used waiting on Valgrind to hopefully reveal the illegal memory access that
+happend earlier. In addition, since Valgrind is effectively a virtual machine,
+the scheduling is different from when ran by the OS\@. This often made bugs
+diasppear, and we were forced to run the tests, or benchmarks, tens of times
+(each of which already taking an unpleasant amount of time) in order to get
+stack traces of the crashing program. While the situation is unfortunate, I do
+not believe that there currently is a good solution at verifying a concurrent
+systems\footnote{perhaps with the exception of a formal proof followed by a
+careful implementation which hopefully matches the proof. This however is often
+intractable for larger systems}.
 
 
 \section{Profiling}
@@ -1507,22 +1539,22 @@ linker = "aarch64-linux-gnu-gcc"
 
   \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{List::remove}}}
     \begin{subfigure}{0.20\textwidth}
-      \includegraphics[width=\textwidth]{plots/gribb-s:nothing-b:list_remove}
+      \includegraphics[width=\textwidth]{plots/#1-s:nothing-b:list_remove}
     \end{subfigure}
   \makebox[0.20\textwidth]{}
   \foreach \scheme in {ebr, hp, hpspin} {%
     \begin{subfigure}{0.20\textwidth}
-      \includegraphics[width=\textwidth]{plots/gribb-s:\scheme-b:list_remove}
+      \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:list_remove}
     \end{subfigure}}
 
     \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{List::Real}}}
     \begin{subfigure}{0.20\textwidth}
-      \includegraphics[width=\textwidth]{plots/gribb-s:nothing-b:list_real}
+      \includegraphics[width=\textwidth]{plots/#1-s:nothing-b:list_real}
     \end{subfigure}
   \makebox[0.20\textwidth]{}
   \foreach \scheme in {ebr, hp, hpspin} {%
     \begin{subfigure}{0.20\textwidth}
-      \includegraphics[width=\textwidth]{plots/gribb-s:\scheme-b:list_real}
+      \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:list_real}
     \end{subfigure}}
 }
 
