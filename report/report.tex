@@ -27,14 +27,7 @@
 \input{macros.tex}
 
 \begin{abstract}
-  \todo{update this!}
-  Concurrent programs, like any other program, produces garbage In languages
-  that do not have a garbage collector, freeing used memory needs to be
-  handled by the programmer, or through other means by the language This
-  report compares 3 different memory reclamation schemes: epoch based
-  reclamation, hazard pointers, and reference counting We look at how they
-  perform when used in different common concurrent data structures, such as
-  Queues, Lists, and (probably not) Skip-Lists, on the ARM platform.
+  \todo{}
 \end{abstract}
 
 \tableofcontents
@@ -1144,8 +1137,6 @@ the results given not so good.}
 
 
 \chapter{Results}\label{ch:results}
-\note{What did we run? Plot some graphs. What did we find out? Which scheme is
-better for which application? Runtime, power usage, etc.}
 
 We have ran the benchmark suite on five different machines, in order to cover
 CPUs from different vendors made for different use cases, hoping to uncover
@@ -1153,26 +1144,32 @@ differences in the reclamation scheme performance. As the CPUs have a very
 different core and thread count, the number of threads in each benchmark is not
 the same across CPUs, but are capped with the number of hardware threads
 supported for the CPU\@. This means that the benchmarks for the lower end CPUs
-only use up to 4 threads, while the ones for the highly parallel ARM CPUs use up
-to 48. \todo{Double check numbers here.} The CPUs we have tested on are a
-Intel\textregistered{} i7--7500U @ 2.70GHz with 2 cores and 4 threads, a
-Intel\textregistered{} i7--4770 @ 3.40GHz with 4 cores and 8 threads, a
-Intel\textregistered{} Xeon\textregistered{} E5--2620 @ 2.0GHz with 6 cores and
-12 threads, a Ryzen 7 1700 @ 3.0GHz with 8 cores and 16 threads, and the ARM
-based Cavium ThunderX @ 2.5GHz with 48 cores and 48 threads.
+only use up to 4 threads, while the ones for the highly parallel ARM CPUs use
+up to 32. The CPUs we have tested on are a Intel\textregistered{} i7--7500U @
+2.70GHz with 2 cores and 4 threads, a Intel\textregistered{} i7--4770 @ 3.40GHz
+with 4 cores and 8 threads, a Intel\textregistered{} Xeon\textregistered{}
+E5--2620 @ 2.0GHz with 6 cores and 12 threads, a Ryzen 7 1700 @ 3.0GHz with 8
+cores and 16 threads, and the ARM based Cavium ThunderX @ 2.5GHz with 32 cores
+and 32 threads.
 
-The benchmakrs are grouped by CPU, each of which have their own section.
-Within each section the benchmarks are grouped by operation on a given data
-structure. We show box plots for most benchmark results.
+The benchmakrs are grouped by CPU, each of which have their own section.  Within
+each section each benchmark have a single bar graph, showing the difference in
+runtime from the version without any garbage collection. The y-axis is
+logarithmic, and all shown timings are positive (any negative data points have
+been set to 0).
 
-It is worth noting that one of the schemes we compare, Crossbeam, is a well
-developed open source library, while the remaining, namely EBR, HP and HP-Spin,
-are the authors own implementation. It is therefore expected that Crossbeams
-offers lower overhead of its operations.
+We note that one of the schemes we compare, Crossbeam, is a well developed open
+source library, while the remaining, namely EBR, HP, and HP-Spin, are the
+authors own implementation. It is therefore expected that Crossbeams offers
+lower overhead of its operations. Crossbeam has no implemented concurrent list,
+so it is only present in the queue benchmarks.  In addition, the queue
+implementations differ between Crossbeam and the author's. For this reason there
+are some anomalies in the data, like Crossbeam being faster than no memory
+reclamation. It is worth nothing that memory reclamation have been shown to
+increase performance in \cite{brown2015reclaiming}, due to the reduced memory
+footprint and hence a reduction in cache misses.
 
-We stress that the y-axis may differ wildly on the benchmarks.
-
-\newcommand{\benches}[1]{
+\newcommand{\benches}[2]{
   \begin{figure}[ht]
     \centering
     \begin{subfigure}{0.40\textwidth}
@@ -1183,7 +1180,7 @@ We stress that the y-axis may differ wildly on the benchmarks.
       \centering \footnotesize\code{Queue::Transfer}
       \includegraphics[width=\textwidth]{plots/#1-b:queue_transfer.pdf}
     \end{subfigure}
-    \\
+    \\\vspace{0.25cm}
     \begin{subfigure}{0.40\textwidth}
       \centering \footnotesize\code{List::Remove}
       \includegraphics[width=\textwidth]{plots/#1-b:list_remove.pdf}
@@ -1192,87 +1189,43 @@ We stress that the y-axis may differ wildly on the benchmarks.
       \centering \footnotesize\code{List::Real}
       \includegraphics[width=\textwidth]{plots/#1-b:list_real.pdf}
     \end{subfigure}
-    \caption{Benchmarks relative to no memoryreclamation for \code{#1}}
+    \caption{Benchmarks relative to no memory reclamation for the #2}
   \end{figure}
-}
-
-\newcommand{\figuregrid}[1]{
-  \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{Queue::push}}}
-  \foreach \scheme in {nothing, crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.20\textwidth}
-      \centering \footnotesize{\code{\scheme}}
-      \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:queue_push}
-    \end{subfigure}}
-    \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{Queue::pop}}}
-  \foreach \scheme in {nothing, crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.20\textwidth}
-      \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:queue_pop}
-    \end{subfigure}}
-    \rotatebox{90}{\hspace{-0.9cm}\footnotesize{\code{Queue::transfer}}}
-  \foreach \scheme in {nothing, crossbeam, ebr, hp, hpspin} {%
-    \begin{subfigure}{0.20\textwidth}
-      \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:queue_transfer}
-    \end{subfigure}}
 }
 
 \clearpage
 \section{Intel\textregistered{} i7--7500U}
-\begin{figure}[ht]
-  \figuregrid{laptop}
-\end{figure}
+
+The i7--7500U is a high end CPU for the mobile segment. It has four hardware
+threads and is hence the CPU with the fewest threads in the report.
+
+\benches{laptop}{Intel\textregistered{} i7--7500U}
 
 \clearpage
 \section{Intel\textregistered{} i7--4770}
-\begin{figure}[ht]
-  \figuregrid{gribb}
-\end{figure}
+\benches{gribb}{Intel\textregistered{} i7--4770}
 
 \clearpage
 \section{Intel\textregistered{} Xeon\textregistered{} E5--2620}
-\begin{figure}[ht]
-  \figuregrid{server}
-\end{figure}
+\benches{server}{Intel\textregistered{} Xeon\textregistered{} E5--2620}
 
 \clearpage
 \section{Ryzen 7 1700}
-
-\benches{ryzen}
-
-\begin{figure}[ht]
-  \figuregrid{ryzen}
-
-  % TODO: move this into \figuregrid
-    \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{List::remove}}}
-    \begin{subfigure}{0.20\textwidth}
-      \includegraphics[width=\textwidth]{plots/ryzen-s:nothing-b:list_remove}
-    \end{subfigure}
-  \makebox[0.20\textwidth]{}
-  \foreach \scheme in {ebr, hp, hpspin} {%
-    \begin{subfigure}{0.20\textwidth}
-      \includegraphics[width=\textwidth]{plots/ryzen-s:\scheme-b:list_remove}
-    \end{subfigure}}
-    \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{List::Real}}}
-    \begin{subfigure}{0.20\textwidth}
-      \includegraphics[width=\textwidth]{plots/ryzen-s:nothing-b:list_real}
-    \end{subfigure}
-  \makebox[0.20\textwidth]{}
-  \foreach \scheme in {ebr, hp, hpspin} {%
-    \begin{subfigure}{0.20\textwidth}
-      \includegraphics[width=\textwidth]{plots/ryzen-s:\scheme-b:list_real}
-    \end{subfigure}}
-
-\end{figure}
+\benches{ryzen}{Ryzen 7 1700}
 
 \clearpage
 \section{Cavium ThunderX}
-\begin{figure}[ht]
-  \figuregrid{scaleway}
-\end{figure}
+\benches{scaleway}{Cavium ThunderX}
 
 
 \chapter{Discussion\label{ch:discussion}}
 \note{Whys. How was Rust? Why are the graphs as they are?
 What alternatives exists?}
+
+
+\bibliographystyle{acm}
+\addcontentsline{toc}{chapter}{Bibliography}
+\bibliography{sources}
 
 \begin{appendices}
   \chapter{Rust's Toolchain}
@@ -1306,9 +1259,10 @@ What alternatives exists?}
   The initial \code{Cargo.toml} may look like Listing~\ref{lst:cargo.toml}.
   The other file, \code{src/main.rs} contains the entry point of the program, as
   in Listing~\ref{lst:hello-world}.
+  \clearpage{}
 
-  \begin{figure}[p]
-  \begin{lstlisting}[language=,basicstyle=\footnotesize\ttfamily,label=lst:cargo.toml,
+  \begin{figure}[ht]
+  \begin{lstlisting}[language=,label=lst:cargo.toml,
   caption=A newly generated \code{Cargo.toml}]
 [package]
 name = "project-name"
@@ -1319,7 +1273,7 @@ authors = ["Martin Hafskjold Thoresen <martinhath@gmail.com>"]
   \end{lstlisting}
 \end{figure}
 
-\begin{figure}[p]
+\begin{figure}[ht]
   \begin{lstlisting}[caption=Hello World in Rust,label=lst:hello-world]
 fn main() {
     println!("Hello, world!");
@@ -1352,7 +1306,7 @@ Hello, world!
   shows an example test on a \code{Queue}. This is usually put in the same file
   at the \code{Queue} but this is only by convention, and not required.
 
-  \begin{figure}[ht!]
+  \begin{figure}[ht]
   \begin{lstlisting}[label=lst:cargo-test,caption=An example test in Rust]
 #[cfg(test)]
 mod test {
@@ -1370,7 +1324,7 @@ mod test {
   \end{figure}
   The output of \code{cargo test} might look like
   Listing~\ref{lst:cargo-test-output}.
-  \begin{figure}[ht!]
+  \begin{figure}[ht]
     \begin{lstlisting}[label=lst:cargo-test-output,caption=Sample output of
     \code{cargo test},language=,numbers=none]
 running 47 tests
@@ -1393,7 +1347,8 @@ test ebr::queue::test::is_unique_receiver ... ok
   Note that the benchmark system is not in stable Rust, so we need to use the
   nightly version. The code that is benchmarked is the closure passed to
   \code{test::Bencher::iter}.
-  \begin{figure}[ht!]
+
+  \begin{figure}[ht]
   \begin{lstlisting}[label=lst:bench-test,caption=An example benchmark in Rust]
 mod bench {
     extern crate test;
@@ -1410,9 +1365,9 @@ mod bench {
 }
     \end{lstlisting}
   \end{figure}
-  \begin{figure}[ht!]
+  \begin{figure}[ht]
     \begin{lstlisting}[label=lst:bench-test-output,caption=Sample output of
-    \code{cargo bench},language=,numbers=none,basicstyle=\footnotesize]
+    \code{cargo bench},language=,numbers=none]
 test ebr::bench::pin               ... bench:   18 ns/iter (+/- 0)
 test ebr::queue::bench::push       ... bench:   57 ns/iter (+/- 12)
 test hp::list::bench::remove_front ... bench:    2 ns/iter (+/- 0)
@@ -1420,22 +1375,22 @@ test hp::list::bench::remove_front ... bench:    2 ns/iter (+/- 0)
   \end{figure}
 
 
-
-
-
+  \clearpage,
   \section{Setup for cross-compilation}
   Other targets may be installed through \rustup{}. For instance, if we want to
-  make \code{aarch64-unknown-linux-gnu} available for cross-compilation we would run
+  make \code{aarch64\-unknown-linux-gnu} available for cross-compilation we would run
+
   \begin{lstlisting}[language=Bash,numbers=none]
 % rustup target add aarch64-unknown-linux-gnu
   \end{lstlisting}
+
   We can either pass in the target architecture to \cargo{} at each invocation,
   or we can configure \cargo{} to use another target by default. We show the latter.
   We make a new file in the project directory called \code{.cargo/config}
   containing Listing~\ref{lst:cargo/config}
+
   \begin{figure}[ht]
   \begin{lstlisting}[language=,
-                     basicstyle=\footnotesize\ttfamily,
                      label=lst:cargo/config,
                      caption=Cargo configuration file for cross-compiling]
 [build]
@@ -1452,14 +1407,84 @@ linker = "aarch64-linux-gnu-gcc"
   with the name of the project.
 
 
+  \chapter{Benchmark Results}
 
-  \todo{Consider add a Git appendix, to show simple checkout stuff, such that
-  ``readers'' who don't know Git can clone the repo, and checkout a commit in
-  order to run some tests.}
+\newcommand{\figuregrid}[1]{
+
+  \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{Queue::push}}}
+  \foreach \scheme in {nothing, crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.20\textwidth}
+      \centering \footnotesize{\code{\scheme}}
+      \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:queue_push}
+    \end{subfigure}}
+
+    \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{Queue::pop}}}
+  \foreach \scheme in {nothing, crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.20\textwidth}
+      \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:queue_pop}
+    \end{subfigure}}
+
+    \rotatebox{90}{\hspace{-0.9cm}\footnotesize{\code{Queue::transfer}}}
+  \foreach \scheme in {nothing, crossbeam, ebr, hp, hpspin} {%
+    \begin{subfigure}{0.20\textwidth}
+      \includegraphics[width=\textwidth]{plots/#1-s:\scheme-b:queue_transfer}
+    \end{subfigure}}
+
+  \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{List::remove}}}
+    \begin{subfigure}{0.20\textwidth}
+      \includegraphics[width=\textwidth]{plots/gribb-s:nothing-b:list_remove}
+    \end{subfigure}
+  \makebox[0.20\textwidth]{}
+  \foreach \scheme in {ebr, hp, hpspin} {%
+    \begin{subfigure}{0.20\textwidth}
+      \includegraphics[width=\textwidth]{plots/gribb-s:\scheme-b:list_remove}
+    \end{subfigure}}
+
+    \rotatebox{90}{\hspace{-0.6cm}\footnotesize{\code{List::Real}}}
+    \begin{subfigure}{0.20\textwidth}
+      \includegraphics[width=\textwidth]{plots/gribb-s:nothing-b:list_real}
+    \end{subfigure}
+  \makebox[0.20\textwidth]{}
+  \foreach \scheme in {ebr, hp, hpspin} {%
+    \begin{subfigure}{0.20\textwidth}
+      \includegraphics[width=\textwidth]{plots/gribb-s:\scheme-b:list_real}
+    \end{subfigure}}
+}
+
+\todo{Write something about these benchmarks, and what might be interesting to look at here.}
+
+\clearpage
+\section{Intel\textregistered{} i7--7500U}
+\begin{figure}[ht]
+  \figuregrid{laptop}
+\end{figure}
+
+\clearpage
+\section{Intel\textregistered{} i7--4770}
+\begin{figure}[ht]
+  \figuregrid{gribb}
+\end{figure}
+
+\clearpage
+\section{Intel\textregistered{} Xeon\textregistered{} E5--2620}
+\begin{figure}[ht]
+  \figuregrid{server}
+\end{figure}
+
+\clearpage
+\section{Ryzen 7 1700}
+\begin{figure}[ht]
+  \figuregrid{ryzen}
+\end{figure}
+
+\clearpage
+\section{Cavium ThunderX}
+\begin{figure}[ht]
+  \figuregrid{scaleway}
+\end{figure}
+
+
 
 \end{appendices}
-
-\bibliographystyle{acm}
-\bibliography{sources}
 
 \end{document}

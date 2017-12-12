@@ -83,7 +83,8 @@ function gnuplot_barplots() {
   # arg2: output file
   # arg3: number of threads in the bench
   # arg4: thread labels
-  # arg5: scheme names
+  # arg5: number of schemes
+  # arg6: scheme names
   gnuplot <<< "\
 set style fill solid 0.25 border -1
 set style fill solid
@@ -91,14 +92,14 @@ set style data boxes
 set boxwidth 0.8
 set xtics scale 0 ()
 threads=\"$4\"
-schemes=\"$5\"
-# set logscale y 10
-set key font \",21\"
+schemes=\"$6\"
+set logscale y 10
+set key font \",20\"
 set terminal pdf size (10 + $3)cm,10cm
-set termoption font \"Arial,\"
+set termoption font \"Arial,20\"
 set output \"$2\"
-set for  [i=1:$3] xtics add (word(threads, i) i * ($3 + 2) - $3 * 0.75)
-plot for [i=2:$3] \"$1\" using (column(0) * ($3 + 2) + (i)):(column(i) -\
+set for  [i=1:$3] xtics add (word(threads, i) (($5 + 1) / 2) + (i - 1) * ($5 + 2))
+plot for [i=2:($5 + 1)] \"$1\" using (column(0) * ($5 + 2) + (i-1)):(column(i) -\
   column(1)) title word(schemes, i-1)
 "
 }
@@ -120,11 +121,11 @@ function relative_barplots() {
   for kind in $(echo "$KINDS"); do
     for bench in $(echo "$benches"); do
       case $kind in
-        "laptop") n_threads=3  ; xtics="1 2 4" ;;
-        "ryzen") n_threads=5   ; xtics="1 2 4 8 16" ;;
-        "server") n_threads=5  ; xtics="1 2 4 8 12" ;;
+        "laptop")   n_threads=3; xtics="1 2 4" ;;
+        "ryzen")    n_threads=5; xtics="1 2 4 8 16" ;;
+        "server")   n_threads=5; xtics="1 2 4 8 12" ;;
         "scaleway") n_threads=6; xtics="1 2 4 8 16 32" ;;
-        "gribb") n_threads=4   ; xtics="1 2 4 8" ;;
+        "gribb")    n_threads=4; xtics="1 2 4 8" ;;
         *)
           (2>&1 echo "that kind is not valid! $kind")
           exit 1
@@ -139,6 +140,10 @@ function relative_barplots() {
       if [[ "$a" =~ 1 ]]; then
         echo "[warn]: skipping $kind $bench, as we're missing 'nothing'."
         continue
+      fi
+      # We want crossbeam to appear last in the list, but have the others sorted
+      if [[ "$all_schemes" =~ 'crossbeam' ]]; then
+        all_schemes=`echo "$all_schemes" | grep -v "crossbeam"`$'\ncrossbeam'
       fi
       schemes=`echo "$all_schemes" | grep -v "nothing"`
       threads=`echo "$data" | grep -oP "t:\K\d{2}" | sort | uniq`
@@ -155,12 +160,13 @@ function relative_barplots() {
 
       outpath="$OUT/$kind-b:$bench.pdf"
       schemes_oneline=`tr '\r\n' ' ' <<< "$schemes"`
+      n_schemes=`echo "$schemes" | wc -l `
       gnuplot_barplots "$outputfile" "$outpath" "$n_threads"  "$xtics"\
-      "$schemes_oneline"
+      "$n_schemes" "$schemes_oneline"
       echo "$outpath"
     done
   done
 }
 
-plots_comparing_threads
+# plots_comparing_threads
 relative_barplots
