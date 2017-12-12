@@ -1153,39 +1153,70 @@ cores and 16 threads, and the ARM based Cavium ThunderX @ 2.5GHz with 32 cores
 and 32 threads.
 
 The benchmakrs are grouped by CPU, each of which have their own section.  Within
-each section each benchmark have a single bar graph, showing the difference in
-runtime from the version without any garbage collection. The y-axis is
-logarithmic, and all shown timings are positive (any negative data points have
-been set to 0).
+each section each benchmark have a single bar graph, showing the ratio of the
+time used to the time used without any memory reclamation on a logarithmic
+scale. The x-axis shows the thread count. Note that the \code{queue::push}
+benchmark is not present in this chapter. For a more complete dataset, see
+Appendix\ \ref{ch:benchmarks}.
 
 We note that one of the schemes we compare, Crossbeam, is a well developed open
 source library, while the remaining, namely EBR, HP, and HP-Spin, are the
 authors own implementation. It is therefore expected that Crossbeams offers
 lower overhead of its operations. Crossbeam has no implemented concurrent list,
-so it is only present in the queue benchmarks.  In addition, the queue
-implementations differ between Crossbeam and the author's. For this reason there
-are some anomalies in the data, like Crossbeam being faster than no memory
-reclamation. It is worth nothing that memory reclamation have been shown to
-increase performance in \cite{brown2015reclaiming}, due to the reduced memory
-footprint and hence a reduction in cache misses.
+so it is only present in the queue benchmarks. In addition, the queue
+implementations differ between Crossbeam and the author's, which causes
+performance differences not strictly due to the presence of the memory
+reclamation system.
+
+
+
+\clearpage
+
+
+
+\begin{figure}[ht]
+  \centering
+  \foreach \kind in {laptop,gribb,server,ryzen,scaleway} {
+    \begin{subfigure}{0.24\textwidth}
+      \centering \footnotesize\code{Queue::Pop}
+      \includegraphics[width=\textwidth]{plots/\kind-b:queue_pop.pdf}
+    \end{subfigure}
+    \begin{subfigure}{0.24\textwidth}
+      \centering \footnotesize\code{Queue::Transfer}
+      \includegraphics[width=\textwidth]{plots/\kind-b:queue_transfer.pdf}
+    \end{subfigure}
+    \begin{subfigure}{0.24\textwidth}
+      \centering \footnotesize\code{List::Remove}
+      \includegraphics[width=\textwidth]{plots/\kind-b:list_remove.pdf}
+    \end{subfigure}
+    \begin{subfigure}{0.24\textwidth}
+      \centering \footnotesize\code{List::Real}
+      \includegraphics[width=\textwidth]{plots/\kind-b:list_real.pdf}
+    \end{subfigure}
+    \\
+  }
+\end{figure}
+
+\clearpage
+
 
 \newcommand{\benches}[2]{
   \begin{figure}[ht]
     \centering
-    \begin{subfigure}{0.40\textwidth}
+    \begin{subfigure}{0.49\textwidth}
       \centering \footnotesize\code{Queue::Pop}
       \includegraphics[width=\textwidth]{plots/#1-b:queue_pop.pdf}
     \end{subfigure}
-    \begin{subfigure}{0.40\textwidth}
+    \begin{subfigure}{0.49\textwidth}
       \centering \footnotesize\code{Queue::Transfer}
       \includegraphics[width=\textwidth]{plots/#1-b:queue_transfer.pdf}
     \end{subfigure}
     \\\vspace{0.25cm}
-    \begin{subfigure}{0.40\textwidth}
+    \begin{subfigure}{0.49\textwidth}
       \centering \footnotesize\code{List::Remove}
       \includegraphics[width=\textwidth]{plots/#1-b:list_remove.pdf}
     \end{subfigure}
-    \begin{subfigure}{0.40\textwidth}
+    \begin{subfigure}{0.49\textwidth}
       \centering \footnotesize\code{List::Real}
       \includegraphics[width=\textwidth]{plots/#1-b:list_real.pdf}
     \end{subfigure}
@@ -1197,16 +1228,49 @@ footprint and hence a reduction in cache misses.
 \section{Intel\textregistered{} i7--7500U}
 
 The i7--7500U is a high end CPU for the mobile segment. It has four hardware
-threads and is hence the CPU with the fewest threads in the report.
+threads and is hence the CPU with the fewest threads in the report. Our results
+show that the implementation of EBR is less efficient than Crossbeams version.
+
+In the queue benchmarks we see large differences between the schemes based on
+EBR and the ones based on HP\@. The scheme with the most overhead is the
+lock-free implementation of HP, which has twice the overhead compared to the
+spinning version of HP\@. This could be because the operations performed are so
+small that the large overhead of pushing the node to a queue effectively doubles
+the work done.
+
+In the list based benchmarks there is a large difference between EBR and HP\@.
+This is expected, as HP has to register hazard pointers for each node when we
+traverse the list, which is done in both \code{Remove} and \code{Real}. The
+difference is somewhat less in \code{Real} using four cores, probably due to the
+increased contention, but there is still a factor of 10 in difference. HP and
+HP-Spin performs very similar here, as we see the oposite effect from in the
+queue benchmarks, where the overhead of the queue push drowns in the slow
+operations.
 
 \benches{laptop}{Intel\textregistered{} i7--7500U}
 
 \clearpage
 \section{Intel\textregistered{} i7--4770}
+
+The i7--4770 shows almost identical numbers as the 7500U. This is expected, as
+both CPUs are x86 from Intel, and targets much of the same segment. As with the
+7500U we see almost no difference in overhead as the thread count increases.
+
 \benches{gribb}{Intel\textregistered{} i7--4770}
 
 \clearpage
 \section{Intel\textregistered{} Xeon\textregistered{} E5--2620}
+
+The E5-2620 is a CPU targeting the server segment. It is the oldest CPU in the
+report, being released in Q1'2012. \code{Pop} shows us similar overhead as in
+the previous Intel CPU's. \code{Transfer} however, shows an increased overhead
+with the lower thread configurations, which reaces well past a factor of 10 with
+one thread, but gradually decreases to 8, with 12 threads.
+
+Both \code{List} benchmarks also shows a slightly different performance profile,
+where the overhead overall is lower than both the 7500U and the 4770.
+
+
 \benches{server}{Intel\textregistered{} Xeon\textregistered{} E5--2620}
 
 \clearpage
@@ -1215,6 +1279,17 @@ threads and is hence the CPU with the fewest threads in the report.
 
 \clearpage
 \section{Cavium ThunderX}
+
+The Cavium ThunderX is the only ARM based CPU in the report. It is also the CPU
+that produced the most surprising results. We see that certain benchmarks and
+thread counts beat the baseline of no reclamation with all schemes except
+\code{HP}. \todo{run again and comment if it is reproducible.}
+
+It is worth nothing that memory reclamation previously have been shown to
+increase performance in the literature, such as\ \cite{brown2015reclaiming}.
+This may be due to the reduced memory footprint which reduces the number of
+cache misses.
+
 \benches{scaleway}{Cavium ThunderX}
 
 
@@ -1407,7 +1482,7 @@ linker = "aarch64-linux-gnu-gcc"
   with the name of the project.
 
 
-  \chapter{Benchmark Results}
+  \chapter{Benchmark Results\label{ch:benchmarks}}
 
 \newcommand{\figuregrid}[1]{
 

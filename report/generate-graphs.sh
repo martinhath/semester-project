@@ -98,8 +98,9 @@ set key font \",20\"
 set terminal pdf size (10 + $3)cm,10cm
 set termoption font \"Arial,20\"
 set output \"$2\"
+set arrow from 0,1 to ($5 * $3 + 2 * ($3 - 1)),1 nohead dt 3
 set for  [i=1:$3] xtics add (word(threads, i) (($5 + 1) / 2) + (i - 1) * ($5 + 2))
-plot for [i=2:($5 + 1)] \"$1\" using (column(0) * ($5 + 2) + (i-1)):(column(i) -\
+plot for [i=2:($5 + 1)] \"$1\" using (column(0) * ($5 + 2) + (i-1)):(column(i) /\
   column(1)) title word(schemes, i-1)
 "
 }
