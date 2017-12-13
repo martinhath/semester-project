@@ -31,7 +31,7 @@
   In concurrent systems it is a hard problem to find out when shared memory is
   safe to free. In this report we look at two of the most used schemes for
   concurrent memory reclamation, \emph{Epoch Based Reclamation} and \emph{Hazard
-  Pointers}, including implementations in the Rust programming language and
+  Pointers}, implementations of the two in the Rust programming language, and
   experimental results of their performance overhead.
 \end{abstract}
 
@@ -176,8 +176,8 @@ allocation, since the memory is freed exactly once when the \code{Box} goes out
 of scope.  \code{Box<T>} also implements another trait, \code{Deref<T>}, which
 causes \code{Box} references to automatically be converted by the compiler to
 \code{T} references, if needed. We note that we can \emph{not} pass a
-\code{Box<T>} to a function that takes a \code{T}, since the two types have
-different \code{drop} implementations.
+\code{Box<T>} to a function that takes a \code{T}, since the two types may have
+different sizes (as well as \code{drop} implementations).
 
 In addition to the ownership rules, Rust have two important rules for
 references: references are always valid, and mutable references are exclusive.
@@ -198,19 +198,18 @@ Sometimes the rules of Rust are too strict. Rust, aiming to be a pragmatic
 language, offers an escape hatch for this: \emph{unsafe code}. In unsafe code it
 is allowed to: dereference raw pointers, call \code{unsafe} functions, implement
 \code{unsafe} traits, and mutate static variables. Raw pointers are, as in C and
-C++, just a memory address, and as with references, both a immutable
-(\code{*const T}) and mutable (\code{*mut T}) variants exist. The difference
-between references and raw pointers is that raw pointers do not have lifetimes
-attached to them. In unsafe Rust, we enter the dangerous and error-prone
-territory that C and C++ programmers know all too well. Examples of
-\code{unsafe} functions are all FFI functions, unchecked array indexing, and
-creating a \code{String} without UTF-8 checks (all \code{String}s in Rust are
-valid UTF-8). \code{unsafe} code is often more about signaling to the programmer
-that the code is fragile, and that one should put extra care into making sure
-that ones assumptions are correct. For instance, dereferencing raw pointers is
-\code{unsafe}, but it may happen that we know that the pointer is still valid,
-eg.\ if it points to heap memory that we explicitly leaked, using
-\code{std::mem::forget}.
+C++, just a memory address, and as with references, both immutable (\code{*const
+T}) and mutable (\code{*mut T}) variants exist. The difference between
+references and raw pointers is that raw pointers do not have lifetimes attached
+to them. In unsafe Rust, we enter the dangerous and error-prone territory that C
+and C++ programmers know all too well. Examples of \code{unsafe} functions are
+all FFI functions, unchecked array indexing, and creating a \code{String}
+without UTF-8 checks (all \code{String}s in Rust are valid UTF-8). \code{unsafe}
+code is often more about signaling to the programmer that the code is fragile,
+and that one should put extra care into making sure that ones assumptions are
+correct. For instance, dereferencing raw pointers is \code{unsafe}, but it may
+happen that we know that the pointer is still valid, eg.\ if it points to heap
+memory that we explicitly leaked, using \code{std::mem::forget}.
 
 By exposing \code{unsafe} to programmers, one might argue that Rust is just as
 unsafe as C or C++. The primary advantage of \code{unsafe} is that the ratio of
@@ -453,13 +452,13 @@ these solution ideas.
 \section{Related Work\label{sec:related-work}}
 
 While Rust does not have native support for concurrent memory reclamation in its
-standard library, third party crates for this does exist. The most notable begin
+standard library, third party crates for this does exist. The most notable being
 Crossbeam~\cite{crossbeam}, an open source umbrella project for concurrency in
 Rust. Crossbeam includes an implementation of EBR (Section~\ref{sec:ebr}), which
-is included in the experimental results of this report. Work on HP in the Rust
-community has also been done~\cite{ticky:hp}, and the Crossbeam project is as of
-13th of December 2017 looking into possibilities of an
-implementation~\cite{crossbeam-hp}.
+is included in the experimental results of this report. Work on HP
+implementations in the Rust community has also been done~\cite{ticky:hp}, and
+the Crossbeam project is as of 13th of December 2017 looking into possibilities
+for an implementation in their project~\cite{crossbeam-hp}.
 
 Other languages are also turning their attention to memory reclamation. A
 proposal for including hazard pointers and RCU (read-copy-update, not covered in
@@ -474,13 +473,13 @@ which combines ideas from both EBR and HP on the .NET platform.
 \chapter{Memory Reclamation\label{ch:memory-reclamation}}
 
 Dynamic memory allocation is a feature supported by the operating system. The
-allocated memory must, sooner or later, be returned, or else there will
+allocated memory must, sooner or later, be freed, or else there will
 eventually be no more memory to allocate. The problem of concurrent memory
 reclamation is all about finding out when it is safe to return memory to the
 OS\@. The main source of problems in this field is that the threads may read
 data, and then be preempted for an arbitrary long time; when it gets execution
 time again, we must somehow make sure that the memory addresses it obtained are
-either still valid, or that it can somehow validate them. Since threads can be
+either still valid, or that it can somehow invalidate them. Since threads can be
 preempted at any point in execution, validation is a hard problem.
 
 Most of the mainstream programming languages today has a large runtime which
@@ -498,7 +497,8 @@ management schemes that does not use a runtime with a garbage collector.
 The field of concurrent memory reclamation is an active one, and a lot of
 different schemes have emerged the recent years. We will look at \emph{Reference
 Counting} (RC), \emph{Epoch Based Reclamation} (EBR), \emph{Hazard Pointers}
-(HP), and try to give a highlight recent developments in the field.
+(HP), and try to give a highlight of some of the more recent developments in the
+field.
 
 \section{Reference Counting}
 Reference counting (RC) is a natural solution for memory reclamation. It was
@@ -565,9 +565,9 @@ with the global epoch and puts it in a \emph{limbo list}. Every once in a while,
 the threads try to increment the epoch, which succeeds if all current pinned
 threads have seen the current epoch. Note that we only have to look through the
 thread entries once: if another thread is pinned while we are searching, it will
-read the current epoch, and cause no problems for us. This requirement for
-epoch incrementation means that all threads that have references to memory we
-might want to free is either in the current or the previous epoch. Lastly, after
+read the current epoch, and cause no problems for us. The requirement for epoch
+incrementation means that all threads that have references to memory we might
+want to free is either in the current or the previous epoch. Thus, after
 incrementing an epoch to $e$ we know that garbage that was added in epoch $e-2$
 is safe to be freed.
 
@@ -604,18 +604,22 @@ most operations on data structure we only need a small constant number of
 references to memory that is shared between running threads. The technique
 exploits this by allowing each thread to register the pointers, called
 \emph{hazard pointers}, the thread wants to use, but which it cannot be sure are
-valid. We call potentially invalid pointers \emph{hazardous}. The number of
-pointers we need varies with the algorithm performed, but a typical value is one
-or two.
+safe (meaning invalid og prone to ABA errors). We call potentially unsafe
+pointers \emph{hazardous}. The number of pointers we need varies with the
+algorithm performed, but a typical value is one or two.
 
 After reading a hazardous pointer the thread registers it as one of its hazard
 pointers. It then have to \emph{validate} that the pointer is still in the data
 structure, as it might have been removed in between the initial read and the
 hazard registration. When we want to free memory we look through the hazard
-pointers of all running threads. We note that again, as with EBR, a single pass
-through this list is sufficient: the object is unlinked before searching, so if
-a thread has a reference to it, but is yet to register it as one of its hazard
-pointers, then it will fail validation.
+pointers of all running threads. If no other thread has registered the memory it
+will be safe to free, since the object is already unlinked from the data
+structure, and is hence no longer reachable. If a thread has read the pointer
+before it became unlinked but not yet registered it, it will fail validation.
+We note that again, as with EBR, a single pass through this list is sufficient:
+the object is unlinked before searching, so if a thread has a reference to it,
+but is yet to register it as one of its hazard pointers, then it will fail
+validation.
 
 If the memory is registered in a thread, we cannot immediately free the memory.
 We now have two options: wait for the thread to finish, or defer the
@@ -623,15 +627,16 @@ deallocation.  By waiting on the thread, we are relying on that the other thread
 will ever deregister the pointer. Hence, we give up lock-freedom, as this is
 prone to deadlocking. It has, however, very low overhead, and will be very fast
 assuming all threads are fairly scheduled and have similar work load.  Deferring
-the deallocation is a safer option, although it have a higher overhead, eg.\ of
-pushing the pointer onto a queue. We would then occasionally visit the queue and
-see if any of the pointers in it have been deregistered by all threads.
+the deallocation is a safer option, although it have a higher overhead, since
+wee need to push the pointer into a queue (or a similar scheme). We would then
+occasionally visit the queue and see if any of the pointers in it have been
+deregistered by all threads.
 
-A challenge in usage of HP is that we need to identify which pointers in our
+A challenge in the usage of HP is that we need to identify which pointers in our
 algorithms are hazardous. In comparison, we have no such concerns in EBR, in
 which we only need to register memory as garbage when we remove it from the data
 structure (we do need to make sure that this memory is only registered by a
-single thread). Another challenge is that of validation, as there is no generic
+single thread). Another challenge is that of validation, as there is no general
 way to do this. For most structures there is an obvious way of doing this. For
 instance, in a queue we can validate the front element by reading the
 \code{head} pointer again, observing that it has not changed. However, it still
@@ -679,29 +684,29 @@ modern operating systems to process memory snapshots.
 In this chapter we will look at all the practicalities of implementing systems
 for concurrent memory reclamation. We start by look at implementation of both the
 data structures we need and the reclamation schemes; then we discuss testing of
-concurrent system; finally we look at benchmarking the system.
+concurrent system; finally we look at benchmarking the system. As Linux creator
+Linus Torvalds said~\cite{linus}: ``Talk is cheap. Show me the code.''
 
 \section{Implementation}
 
 Now that we have an idea of \emph{what} we want to implement we must change our
 mindset into \emph{how} we want to implement it. We make use of Rust's features
-in order to make the system easy to use and hard to misuse.  As there is often a
-disconnect between the description of a system and its implementation we risk
-repeating parts of Chapter~\ref{ch:memory-reclamation} in this chapter. We note
-that due to time limitations of this project the implementation is yet to be
-properly optimized. The data structures were first implemented without any
-regard for memory reclamation.  Allocated memory were simply leaked when no
-longer needed.
+in order to make the system easy to use and hard to misuse.  We note that due to
+time limitations of this project the implementation is yet to be properly
+optimized; this includes using other memory orderings than \code{SeqCst}. The
+data structures were first implemented without any regard for memory
+reclamation.  Allocated memory were simply leaked when no longer needed.
 
 
 \subsection{Atomics\label{sec:atomics}}
 
 As mentioned in Section~\ref{sec:rust}, it is idiomatic Rust to unitize the type
-system in order to help ourselves. We have made new atomic pointer types in addition
-to those in the standard library in order to capture wanted semantics. Initially
-these were copied from the Crossbeam project\cite{crossbeam-msqueue}, but they have been adjusted as
-needed. Most notably a \code{HazardPtr} type was created, which handles
-registration and deregistration of the hazard pointer automatically.
+system in order to help ourselves. We have made new atomic pointer types in
+addition to those in the standard library in order to capture wanted semantics.
+Initially these were copied from the Crossbeam project~\cite{crossbeam-msqueue},
+but they have been adjusted as needed. Most notably a \code{HazardPtr} type was
+created, which handles registration and deregistration of the hazard pointer
+automatically.
 
 
 \subsection{Data Structures\label{sec:data-structures}}
@@ -787,7 +792,7 @@ possibility of middle-of-the-list insertions.
         \draw[-latex,color=lightgray] ($ (A.north) + (0.5,0) $) to[out=45,in=135] ($ (C.north) -
           (0.5, 0) $);
       \end{tikzpicture}
-      \caption{The initial list. When removing B we swing the \code{}
+      \caption{The initial list. When removing B we swing \code{A}'s
       pointer over to C.\label{fig:list-remove-a}}
   \end{subfigure}
 
@@ -830,10 +835,11 @@ possibility of middle-of-the-list insertions.
   \end{subfigure}
   \caption{List removal which removes two elements when there is a concurrent
   insertion. This happens because the \code{compare-and-swap} operation
-  performed on \code{A.next} is succeeds since the previous value is not
-  changed.  However, the new value is logically changed, since C is no longer
-  the \code{next} value of B, although there is no way for the \code{CAS} to
-  detect that.\label{fig:list-remove}} \end{figure}
+  performed on \code{A.next} succeeds since the previous value is not changed.
+  However, the new value is logically changed, since C is no longer the
+  \code{next} value of B, although there is no way for the \code{CAS} to detect
+  that.\label{fig:list-remove}}
+\end{figure}
 
 Our solution to this problem is simple and effective: we \emph{tag} the node we
 want to remove, such that other threads do not add a new node after it. We
@@ -842,12 +848,13 @@ an object in memory is divisible by some number. Objects are typically aligned
 by their size, such that \code{u32}s are only on addresses where the four least
 significant bits are zero. Bytes are ``aligned'' on 1 byte boundaries,
 effectively meaning they are not aligned at all. Since we know that the pointers
-we have points to larger objects, the LSB of the pointer itself is free. We use
-this to tag the node. A consequence of tagging is that all operations must check
-the \code{next} pointers for tags, and abort their operation if it contains one,
-since the node they are currently on are being removed. This is especially a
-problem when using hazard pointers, as the next node is not protected, and may
-have been both removed from the list as well as deallocated.
+we have points to larger objects, the least significant bit of the pointer
+itself is free. We use this to tag the node. A consequence of tagging is that
+all operations must check the \code{next} pointers for tags, and abort their
+operation if it contains one, since the node they are currently on is being
+removed. This is especially a problem when using hazard pointers, as the next
+node is not protected, and may have been removed from the list and even
+deallocated.
 
 
 \subsection{Epoch Based Reclamation}
@@ -1037,31 +1044,29 @@ the first time \code{pin} is called, and this entry is only removed if the
 thread shuts down gracefully. Thus, if the system keeps creating threads which
 crashes right after calling \code{pin}, the list will quickly grow, and its
 elements will never be removed, which will leak memory and severely increase the
-overhead of EBR. This problem can be mitigated by removing the entry from the
-list if the thread shuts down gracefully; however this is still a problem if
-threads crashes. One solution could be to mark the entries with a timestamp, and
+overhead of EBR\@. One solution could be to mark the entries with a timestamp, and
 remove entries that have been inactive for too long, as well as to set the
 threads thread local pointer to \code{null}. This creates further complications,
 since thread may have simply been preempted for a long time, such that other
-threads think it has crashed.  This problem has not been attempted solved as it
+threads think it has crashed. This problem has not been attempted solved as it
 is mainly theoretical.\label{sec:thread-cleanup}
 
 \subsection{Hazard Pointers}
 
-The scheme for hazard pointers is simpler than that of EBR.\@ Each thread have a
-\code{ThreadEntry} which contains a fixed size array of hazard pointers. A
-hazard pointer is stored as a \code{AtomicUsize}.  The number of hazard pointers
-is stored in a constant. The entries are stored in a global list, and each
-thread has a local pointer to its entry in the list. The \code{Ptr} struct is
-extended with a \code{hazard} method, which makes a \code{HazardPtr} struct.
-\code{HazardPtr} utilizes the RAII paradigm by registering itself in its
-constructor and deregistering itself in its \emph{drop} implementation. This way
-users know that a pointer is protected if they have it as a \code{HazardPtr}. It
-also contains methods for checking if its unique (that is, no other thread has
-marked the same address as a hazard pointer).  Logically, a \code{HazardPtr} is
-a proof that the pointer is safe to use by the thread. There is no abstraction
-around the validation of the hazard pointers; this has to be done manually, and
-was inlined in all places necessary.
+The implementation for hazard pointers is simpler than that of EBR.\@ Each
+thread have a \code{ThreadEntry} which contains a fixed size array of hazard
+pointers. A hazard pointer is stored as a \code{AtomicUsize}.  The number of
+hazard pointers is stored in a constant. The entries are stored in a global
+list, and each thread has a local pointer to its entry in the list. The
+\code{Ptr} struct is extended with a \code{hazard} method, which makes a
+\code{HazardPtr} struct.  \code{HazardPtr} utilizes the RAII paradigm by
+registering itself in its constructor and deregistering itself in its
+\code{drop} implementation. This way users know that a pointer is protected if
+they have it as a \code{HazardPtr}. It also contains methods for checking if its
+unique (that is, no other thread has marked the same address as a hazard
+pointer).  Logically, a \code{HazardPtr} is a proof that the pointer is safe to
+use by the thread. There is no abstraction around the validation of the hazard
+pointers; this has to be done manually, and was inlined in all places necessary.
 
 As we saw in Section~\ref{sec:hp} we have primarily two ways
 of handling freeing of data protected by hazard pointers: waiting and deferring.
@@ -1071,9 +1076,10 @@ either variant is enabled through a flag passed to the compiler.
 \subsubsection{Deferred Freeing} In deferred freeing, the implementation of HP
 becomes more similar to that of EBR\@. We used the same \code{Garbage} struct as
 in EBR to handle garbage types. We did not need to port over \code{Bag}, but
-rather spun on contention of the hazard pointers for the nodes, as this queue
-would have less contention.  The \code{hazard()} method on the atomic pointer
-types from Section~\ref{sec:atomics} hijacks the program execution for freeing,
+rather spun on contention of the hazard pointers for the nodes, as we believe
+this queue would have less contention. This decision also reduced the complexity
+of the implementation. The \code{hazard()} method on the atomic pointer types
+from Section~\ref{sec:atomics} hijacks the program execution for freeing,
 similar to the \code{pin} function in EBR\@. The hazard pointer is buffered
 locally and then pushed into a global list. Occasionally we pop the hazard
 pointer element of the queue if the pointer is unique. If the pointer is not
@@ -1128,7 +1134,7 @@ the scheduling is different from when ran by the OS\@. This often made bugs
 disappear, and we were forced to run the tests, or benchmarks, tens of times
 (each of which already taking an unpleasant amount of time) in order to get
 stack traces of the crashing program. While the situation is unfortunate, I do
-not believe that there currently is a good solution at verifying a concurrent
+not believe that there currently is a good solution at verifying concurrent
 systems\footnote{perhaps with the exception of a formal proof followed by a
 careful implementation which hopefully matches the proof. This however is often
 intractable for larger systems}.
@@ -1357,6 +1363,9 @@ allocates nodes, such that the ratio is smaller since the total time is larger.
 
 Both \code{List} benchmarks also shows a slightly different performance profile,
 where the overhead overall is lower than both the 7500U and the 4770.
+We also note that these list benchmarks are the only tests in which HP
+outperforms HP-Spin\footnote{The only exception being Ryzen \code{List::Real}
+with 8 threads.}. We have no explanation as to why.
 
 \benches{server}{Intel\textregistered{} Xeon\textregistered{} E5--2620}
 
@@ -1367,7 +1376,7 @@ The Ryzen is the tests only CPU from AMD, and has the second highest core count,
 despite being a desktop CPU. One might expect AMD's focus on multi-core to
 be manifested in the benchmark in the form of lower synchronization costs.
 Despite this, the difference between EBR based schemes and HP based schemes for
-\code{Pop}is the largest in the test. This is counter intuitive, as HP schemes
+\code{Pop} is the largest in the test. This is counter intuitive, as HP schemes
 have a higher degree of synchronization. The results for the \code{List} tests
 are similar to the 2620, with a little higher overhead with lower thread counts.
 
@@ -1383,8 +1392,8 @@ thread counts beat the baseline of no reclamation with all schemes except
 shown to increase performance in the literature, such as\
 \cite{brown2015reclaiming}. This may be due to the reduced memory footprint
 which reduces the number of cache misses. We also see that the ThunderX scales
-very on the \code{List} benchmarks, improving by a factor of 10 from 1 to 32
-threads in \code{List::Remove}.
+very well on the \code{List} benchmarks, improving by a factor of 10 from 1 to
+32 threads in \code{List::Remove}.
 
 \benches{scaleway}{Cavium ThunderX}
 
@@ -1399,8 +1408,9 @@ and implementations of them in the Rust programming language
 (Chapter~\ref{ch:methodology}). We have also looked at the performance
 implications of the two across multiple CPU's.  Neither implementation has
 undergone careful optimizations, so the absolute performance numbers are not as
-interesting as the general curves of the schemes, although the implementation of
-EBR had similar overhead characteristics as Crossbeam in most benchmarks.
+interesting as the general curves of the schemes. Despite this we would like to
+point oiut that the implementation of EBR had similar overhead characteristics
+as Crossbeam in most benchmarks, even in absolute terms on some tests.
 
 We used Rust as the implementation language. Rust has concurrency as one of its
 main goals, and has shown to be a great language for constructing high level
@@ -1413,7 +1423,7 @@ concurrency.
 
 \section{Future Work}
 
-This report is mainly a proof of research by the Author, and it thus does not
+This report is mainly a proof of research by the author, and it thus does not
 necessarily contain noteworthy novel parts. However, it does shed some light on
 an increasingly popular and important field. I list topic I believe are natural
 extensions of this project, or related projects.
@@ -1442,10 +1452,10 @@ HTM\@. This would require either the Rust compiler to have support for HTM, or
 third party crates to have inline assembly for the targets that support HTM\@.
 
 Lastly, from an engineering standpoint, improved tooling for concurrent
-programming would be much appreciated by the entire community. While Rusts
-static checks and rules narrow the searches for bugs in the codebase down to
-\code{unsafe} blocks, there still seems to be no good way of neither detecting
-nor finding bugs that are due to concurrency.
+programming would be much appreciated by, I believe, the entire community. While
+Rusts static checks and rules narrow the searches for bugs in the codebase down
+to \code{unsafe} blocks, there still seems to be no good way of neither
+detecting nor finding bugs that are due to concurrency.
 
 
 \bibliographystyle{acm}
