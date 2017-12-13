@@ -19,7 +19,7 @@
 \catcode`\_=12
 
 \begin{document}
-\title{Concurrent Memory Reclamation on ARM}
+\title{Implementing Concurrent Memory\linebreak Reclamation Schemes}
 \author{Martin Hafskjold Thoresen}
 \date{\today}
 \maketitle
@@ -27,27 +27,35 @@
 \input{macros.tex}
 
 \begin{abstract}
-  \todo{}
+  In systems without a garbage collector dynamic allocated memory have to freed.
+  In concurrent systems it is a hard problem to find out when shared memory is
+  safe to free. In this report we look at two of the most used schemes for
+  concurrent memory reclamation, \emph{Epoch Based Reclamation} and \emph{Hazard
+  Pointers}, including implementations in the Rust programming language and
+  experimental results of their performance overhead.
 \end{abstract}
 
 \tableofcontents
 
 \chapter{Introduction}
-\todo{Add note on course at NTNU in the fall of 2017 etc?}
-% \note{Outline: parallelism, garbage collection, what we are about to do,
-% rust, performance, usability}
+
+This report is the final report of the course TDT4501: Computer Science
+Specialization Project, worth 15 SP (credits) at the Norwegian University of
+Science and Technology in the fall of 2017
+
+\section*{}
 
 In 1965 Gordon Moore stated what is now knows as \emph{Moore's Law}, which
 roughly states that the number of transistors on integrated circuits will double
-every 18 months. The law has also been used to describe the increse in clock
+every 18 months. The law has also been used to describe the increase in clock
 speed of central processing units (CPU's). During the 2000s however, this growth
 slowed drastically, and CPU's sold today have very similar clock speeds as those
-sold in 2005. Desipte the clock speed stagnation, there have been major
-performance improvements in the last 15 years. We have more cache, improved
-branch predictors, larger vector instructions, superscalar architechtures, and
-\emph{multi-core systems}, the latter of which is central to this report.
-Multi-core systems are now ubiquitous; high end desktop CPUs with 16 cores are
-available, and even smartphones with 8 cores are in the market in 2017.
+sold in 2005, over 10 years ago. Despite the clock speed stagnation, there have
+been major performance improvements in the last 15 years. We have more cache,
+improved branch predictors, larger vector instructions, super-scalar
+architectures, and \emph{multi-core systems}, the latter of which is central to
+this report. Multi-core systems are now ubiquitous; high end desktop CPU's with
+16 cores are available, and even smartphones with 8 cores are on the market.
 
 The introduction and growth of multi-core systems, however, has not been as
 noticeable as the former improvements in clock speed. One reason for this is
@@ -56,19 +64,11 @@ Amdahls Law, this even puts an upper bound on the possible speedup we can get by
 using concurrency.  Another reason is that programs already written cannot
 automatically use the extra parallelism that newer architectures give us;
 parallelism needs to be accounted for by programmers, and often imply a major
-shift in program architecture. \todo{?}A third reason may be that concurrent systems are
+shift in program architecture. A third reason may be that concurrent systems are
 extremely complex. Bugs are (usually) not reproducible, tests are not
 deterministic, and the combinatorial explosion of possible interwindings of
 executions across threads makes a brute force approach to program verification
 intractable.
-
-\todo{want to say that the complexity of concurrency means that most programmers
-have already given it up, due to the lack of good, generic contstructs for eg.
-work sharing, thread management, synchronization, and communication.}
-A consequence of the complexity of concurrent systems is that most programming
-languages have poor support for concurrency, as it is often regarded as a last
-resort, or an area reserved for expert programmers only.
-In short, concurrency has yet to be approachable for a lot of programmers.
 
 In this report we look at the problem of concurrent memory reclamation. The
 problem can be informally stated as ``how to we know when it is safe to free
@@ -79,32 +79,28 @@ reclamation schemes, both the ones implemented here and a highlight of newer
 variants; in Chapter~\ref{ch:methodology} we look at the practical side of this
 project: implementing memory reclamation schemes in Rust, as well as testing and
 benchmarking methods; in Chapter~\ref{ch:results} we look at the experimental
-results from running the system implemented; and in Chapter~\ref{ch:discussion}
+results from running the system implemented; and in Chapter~\ref{ch:conclusion}
 we summarize the project, comment on methodologies, and suggest future work.
+Appendix~\ref{ch:rust-toolchain} contains practicalities around the Rust
+ecosystem, and Appendix~\ref{ch:benchmarks} contains complete benchmark data for
+the experimental results obtained.
 
-\note{what is the motivation behind this? Do we want to make the claim that Rust
-is making low level stuff more approachable, and that we can help improving the
-performance of programs written by having CMR in Rust?}
 
-\note{Parallelism isn't a success story for programmers. Hard, error-prone, even
-simple things goes wrong. Need effective abstractions to improve this.??}
 
 
 \chapter{Background\label{ch:background}}
 
-\todo{Consider adding MS queue or something to show pitfalls in concurrent programming?}
-
 The field of computer science is broad and diverse, so readers may have very
 different prerequisites.  We will assume the reader is familiar with traditional
 memory management (as in C), and the basics of computer hardware, such as the
-existence of cahce memory. The report will (hopefully) be approachable to anyone
+existence of cache memory. The report will (hopefully) be approachable to anyone
 with this background.
 
 \section{Terminology} We start with basic terminology of memory management. Most
 of the programs we write \emph{allocate} memory, meaning requesting a memory
 range from the OS for exclusive use by the program. This memory is then
-\emph{deallocated}, or \emph{freed}, when we are done with it, so that the
-memory may be used at a later time for a different purpouse; the memory is thus
+\emph{de-allocated}, or \emph{freed}, when we are done with it, so that the
+memory may be used at a later time for a different purpose; the memory is thus
 \emph{reclaimed}. If we want to ``mark'' memory as freed without freeing it
 (that is, the program still has exclusive use of it) we say we \emph{retire} the
 memory (reasons for doing so will become apparent). In concurrent settings, we
@@ -112,18 +108,17 @@ risk accessing memory at the same time; a \emph{data race}, or a \emph{race
 condition} is when multiple threads are operating on the same memory
 simultaneously, and where at least one operation is a write.
 
-Both modern compilers and CPUs may reorder program instructions if they think it
+Both modern compilers and CPU's may reorder program instructions if they think it
 will improve performance, for instance by improving memory locality and thus
 improving cache behavior, or reduce pipeline stalling. This may or may not be
 acceptable by the program. The guarantee that the instructions executed appear
-to take effect in program order is called \emph{sequential consistency} (SC),
-and was defined by Leslie Lamport in 1979\todo{source here}. We call a system in
-which threads can be prevented from making progress \emph{blocking}. The
-opposite of blocking is \emph{non-blocking}. A system is \emph{lock-free} if we
-have a guarantee that \emph{some} thread will make progress. Note that any given
-thread may be blocked for an infinite amount of time. The guarantee that
-\emph{any} given thread will eventually make progress is called
-\emph{wait-freedom}.  For a more thorough introduction
+to take effect in program order is called \emph{sequential consistency} (SC).
+We call a system in which threads can be prevented from making progress
+\emph{blocking}. The opposite of blocking is \emph{non-blocking}. A system is
+\emph{lock-free} if we have a guarantee that \emph{some} thread will make
+progress. Note that any given thread may be blocked for an infinite amount of
+time. The guarantee that \emph{any} given thread will eventually make progress
+is called \emph{wait-freedom}.  For a more thorough introduction
 see~\cite{herlihy2011art}.
 
 In communities dealing with concurrency and parallelism the meaning of the two
@@ -195,7 +190,7 @@ most that of the function. The second rule stops one reference to invalidate the
 data that another reference points to. For instance it is not allowed (and
 caught at compile time) to have a reference to a value inside a \code{Vec} and
 mutate the \code{Vec}, since mutating the \code{Vec} might cause the data to be
-moved, which invalidates the reference.\todo{feedback on this paragraph}
+moved, which invalidates the reference.
 
 \subsection{Unsafe Rust}
 
@@ -205,7 +200,7 @@ is allowed to: dereference raw pointers, call \code{unsafe} functions, implement
 \code{unsafe} traits, and mutate static variables. Raw pointers are, as in C and
 C++, just a memory address, and as with references, both a immutable
 (\code{*const T}) and mutable (\code{*mut T}) variants exist. The difference
-between references and raw pointers is that raw poiters do not have lifetimes
+between references and raw pointers is that raw pointers do not have lifetimes
 attached to them. In unsafe Rust, we enter the dangerous and error-prone
 territory that C and C++ programmers know all too well. Examples of
 \code{unsafe} functions are all FFI functions, unchecked array indexing, and
@@ -228,7 +223,7 @@ perfectly safe code.
 
 
 
-\section{Concurrency in Hardware \todo{HTM?}}
+\section{Concurrency in Hardware}
 
 Most programmers rarely have to think about the hardware their programs run on.
 Caches, for instance, is designed to be transparent for programmers. With
@@ -251,7 +246,7 @@ synchronization problems to occur. This is called \emph{false sharing}.
 We would like our programs to be sequentially consistent, as this maps the
 program execution to the source code of the program. However, we also want our
 programs to be performant, and it turns out that from a hardware perspective
-these two requirements are conflicting. CPUs are simply not sequentially
+these two requirements are conflicting. CPU's are simply not sequentially
 consistent.
 
 CPU architectures have rules on how much the CPU is allowed to reorder reads and
@@ -293,8 +288,24 @@ process, while processes do not. Since we are looking at memory reclamation, we
 will only be looking at shared memory concurrency, meaning concurrency using
 threads.
 
-\todo{write about mutexes, semaphores, message passing, work stealing, condvars,
-cilk, rayon, go, green threads}
+Synchronization between threads is usually done through either sharing memory or
+message passing. When sharing memory we have constructs like \emph{mutexes},
+\emph{semaphores}, which protects critical sections, and \emph{condvars} which
+allow threads to wait until a particular condition is met. Message passing is a
+communication technique in which threads communicate over \emph{channels}.
+The channels may have single- or multiple senders and/or receivers. Message
+passing (MP) has seen an increased popularity with the programming language Go, in
+which MP is the preferred way of thread communication.
+
+Thread management is also topic within the realm of software concurrency.
+Threads spawned by the operating system gives a \emph{handle} to the spawning
+thread, and the spawning thread may block its execution until the thread is done,
+by \emph{joining} it. Thread management involves the structure of thread
+handles, when to spawn and when to join, as well as simple communication
+between the threads. Popular examples of high level thread management schemes
+involved thread pools, green threads (lightweight threads), and work stealing.
+Notable examples of projects employing such schemes are Cilk~\cite{cilk} and
+its Rust counterpart Rayon~\cite{rayon}
 
 We end this section with an example of instruction reordering. Consider
 Listing~\ref{lst:reordering}, and assume variables are initialized to 0.  When
@@ -333,11 +344,11 @@ differs only from regular operations in that the operation cannot be observed to
 happen partially.  \code{acquire} and \code{release} are intended to work in
 pairs, by loading with \code{acquire} and storing with \code{release} in the
 same memory location.  An \code{acquire} load of X ensures that subsequent loads
-will see all stores that happend before a \code{release} store to X.  This can
+will see all stores that happened before a \code{release} store to X.  This can
 be used to implement a lock, where we \code{acquire} the lock before the
 critical section, and \code{release} the lock after it.  Now we get the
 guarantee that two critical sections cannot overlap, since the stores before the
-\code{realease} in the first section must be visible upon the \code{acquire}
+\code{release} in the first section must be visible upon the \code{acquire}
 load of the second. Note that operations \emph{are} allowed to be moved from the
 outside to the inside of the critical section. \code{acq\_rel} is the
 \code{release} ordering when used with a store, and \code{acquire} when used
@@ -408,9 +419,9 @@ Another example comes from in lock-free lists. Consider a linked list, where
 nodes have a \code{next} pointer to the next element in the list.  By reading
 the \code{next} field on a node twice at times $t\sb{0}$ and $t\sb{1}$, and
 observing no change, we might conclude that the next node is the same. However,
-the node at $t\sb{0}$ may have been removed from the list, its memory reclamed
+the node at $t\sb{0}$ may have been removed from the list, its memory reclaimed
 for a new node, which is then inserted at the same place before $t\sb{1}$. This
-can be disasterous and cause problems such as double deletes.
+can be disastrous and cause problems such as double deletes.
 
 Instances of the ABA problem is easily prevented if we have atomic operations
 that can check for change in the memory, even if it is changed back to the
@@ -419,7 +430,7 @@ initial state. An example of such operations are the \code{load-link} and
 will only store a new value if the memory has not been written to after read by
 \code{LL}. Current implementations on \code{LL/SC} are \emph{weak}, in the sense
 that the store may fail even though it is never touched, but when another value
-on the same cache line is written to. Architectures supporing \code{LL/SC}
+on the same cache line is written to. Architectures supporting \code{LL/SC}
 include ARM, PowerPC, and RISC-V.
 
 Another instruction that helps with the ABA problem is double compare-and-swap,
@@ -428,8 +439,8 @@ any value to be updated. \code{DCAS} is not supported by any architecture. We
 note that this is a different operation than double \emph{word} compare-and-swap
 (\code{DWCAS}), which is a regular \code{CAS} that writes double word values.
 
-Without propper hardware support there is no one good solution to the ABA
-problem, but most instances of the problem are managable. Solution ideas include
+Without proper hardware support there is no one good solution to the ABA
+problem, but most instances of the problem are manageable. Solution ideas include
 \emph{tagging}, in which we tag the value swapped such that the second reading
 observes a change in tag; \emph{indirection} in which we use an intermediate
 node, such that the intermediate node changes, while the data node is still not
@@ -437,6 +448,26 @@ observed to have changed; and \emph{deferred reclamation} where we wait for
 ``safe periods'' in which we know that ABA problems cannot occur. In the
 following chapter we look at reclamation schemes which utilizes all three of
 these solution ideas.
+
+
+\section{Related Work\label{sec:related-work}}
+
+While Rust does not have native support for concurrent memory reclamation in its
+standard library, third party crates for this does exist. The most notable begin
+Crossbeam~\cite{crossbeam}, an open source umbrella project for concurrency in
+Rust. Crossbeam includes an implementation of EBR (Section~\ref{sec:ebr}), which
+is included in the experimental results of this report. Work on HP in the Rust
+community has also been done~\cite{ticky:hp}, and the Crossbeam project is as of
+13th of December 2017 looking into possibilities of an
+implementation~\cite{crossbeam-hp}.
+
+Other languages are also turning their attention to memory reclamation. A
+proposal for including hazard pointers and RCU (read-copy-update, not covered in
+this report) into the C++ standard library was released in November 2017
+\cite{cpp:mr}. There is also ongoing work in managed languages, despite the
+presence of a garbage collector. An example is Project
+Snowflake~\cite{project-snowflake-non-blocking-safe-manual-memory-management-net}
+which combines ideas from both EBR and HP on the .NET platform.
 
 
 
@@ -455,7 +486,7 @@ preempted at any point in execution, validation is a hard problem.
 Most of the mainstream programming languages today has a large runtime which
 employs a \emph{garbage collector}. The job of the garbage collector (GC) is to
 find all memory that is no longer in use, and free it. A type of tracing garbage
-colelctor is the \emph{mark-and-sweep GC}, which marks all pointers reachable
+collector is the \emph{mark-and-sweep GC}, which marks all pointers reachable
 from some ground set of the program, sweeps the memory and frees the memory that
 was not previously marked. This process involves pausing the program execution,
 and is also dependent on the runtime thread.  One of the strengths of concurrent
@@ -463,7 +494,6 @@ systems is fail tolerance: thread may fail spuriously, but the system as a whole
 makes progress regardless. It is clear that the runtime is a single point of
 failure for systems employing one. It is therefore interesting to look at memory
 management schemes that does not use a runtime with a garbage collector.
-\todo{revisit this}
 
 The field of concurrent memory reclamation is an active one, and a lot of
 different schemes have emerged the recent years. We will look at \emph{Reference
@@ -471,7 +501,7 @@ Counting} (RC), \emph{Epoch Based Reclamation} (EBR), \emph{Hazard Pointers}
 (HP), and try to give a highlight recent developments in the field.
 
 \section{Reference Counting}
-Reference counting (RC) is a natural solition for memory reclamation. It was
+Reference counting (RC) is a natural solution for memory reclamation. It was
 introduced in 1960 by G. E.  Collins\cite{collins1960method}, where it was used
 for collecting nodes of a linked list.  The idea is that we count the number of
 references to data, so that we can tell if we are holding the only reference to
@@ -483,7 +513,7 @@ still used, although it is unusual to have it be the primary mechanism for
 memory management, due to its performance overhead.
 
 Atoimc reference counting (ARC) is RC using atomic variables, and is a natural
-extention of RC\@. However, the na\"\i{}ve implementation is not correct:
+extension of RC\@. However, the na\"\i{}ve implementation is not correct:
 consider two threads operating on some \code{Rc<T>}. When thread $A$ want to
 create a new reference to the data, it increments the count in the \code{RC}
 object. Upon destruction, the count is decremented and the data is freed if the
@@ -512,7 +542,7 @@ we get to increment it. When all threads have dropped their reference, the
 count will drop to zero, and the \code{Arc} will be free'd, not risking that any
 other thread is just about to increment its count.
 \clearpage
-\section{Epoch Based Reclamation}
+\section{Epoch Based Reclamation\label{sec:ebr}}
 
 Epoch Based Reclamation (EBR) was introduced by Fraser
 in~\cite{fraser2004practical}. It is a reclamation scheme based on the
@@ -565,7 +595,7 @@ the thread pinned. However, this will stop the advancement of the global epoch,
 and thus effectively halting the memory reclamation. An immediate consequence of
 this is that EBR is not lock-free, which is not acceptable for all use cases.
 
-\section{Hazard Pointers\label{sec:hazard-pointers}}
+\section{Hazard Pointers\label{sec:hp}}
 
 Hazard pointers were introduced by Michael in~\cite{michael2004hazard}.  The
 paper formalizes hazardous pointers, and includes a proof of correctness. We
@@ -594,7 +624,7 @@ will ever deregister the pointer. Hence, we give up lock-freedom, as this is
 prone to deadlocking. It has, however, very low overhead, and will be very fast
 assuming all threads are fairly scheduled and have similar work load.  Deferring
 the deallocation is a safer option, although it have a higher overhead, eg.\ of
-pushing the pointer onto a queue. We would then occationally visit the queue and
+pushing the pointer onto a queue. We would then occasionally visit the queue and
 see if any of the pointers in it have been deregistered by all threads.
 
 A challenge in usage of HP is that we need to identify which pointers in our
@@ -604,11 +634,44 @@ structure (we do need to make sure that this memory is only registered by a
 single thread). Another challenge is that of validation, as there is no generic
 way to do this. For most structures there is an obvious way of doing this. For
 instance, in a queue we can validate the front element by reading the
-\code{head} pointer again, observing that it has not changed. However, it stil
-requires local knowledge of the data strcture in question.
+\code{head} pointer again, observing that it has not changed. However, it still
+requires local knowledge of the data structure in question.
 
-\section{Other Schemes}
-\todo{this. Debra, StackTrack, ++? We only need to write a paragraph on each or something.}
+\section{Other Schemes\label{sec:other-schemes}}
+
+Due to time constraints we have chosen to focus on the two most known
+reclamation schemes, EBR and HP\@. However, there exists a wide range of other
+schemes, many of which have emerged only in the last recent years. We give a
+very quick overview of selected schemes in the field. We encourage readers to
+read the respective papers.
+
+Brown introduces in~\cite{brown2015reclaiming} the \emph{DEBRA} and \emph{DEBRA+} systems,
+which are based on ideas similar to that of EBR\@, but they also employ hazard
+pointers. DEBRA+ uses additional OS specific features such as signals and
+\code{longjmp} offered by POSIX compliant operating systems.
+
+\emph{Drop the Anchor} is presented in~\cite{Braginsky:2013:DAL:2486159.2486184} by
+Braginsky, Kogan, and Petrank, in which threads suspected to be stuck are marked
+as such. This way we do not have to consider threads that may sleep for a long
+time when reclaiming, which saves a lot of trouble. It employs ideas from HP,
+like threads having a local buffer of deferred freed memory, and EBR by using
+timestamps.
+
+Cohen and Petrank proposed in~\cite{cohen2015efficient} a scheme in which the
+memory manager allows threads to infrequently access reclaimed memory.
+
+\emph{QSense} was introduced in~\cite{balmau2016fast}. It uses the
+fast-path/slow-path pattern, in which the scheme in the fast path is EBR
+inspired, and the slow-path is HP inspired. The system handles automatically the
+switch between the two states.
+
+Alistarh et.\ al presented \emph{StackTrack} in~\cite{alistarh2014stacktrack}
+which is based around hardware transactional memory (HTM; not covered in this
+report). They note the system can also be implemented using software
+transactional memory, although HTM is essential for performance. In 2017 Alistar
+et.\ al introduced \emph{ForkScan}~\cite{alistarh2017forkscan}, which employs signaling
+and copy-on-write semantics offered by high performance implementations by
+modern operating systems to process memory snapshots.
 
 
 \chapter{Methodology\label{ch:methodology}}
@@ -621,10 +684,14 @@ concurrent system; finally we look at benchmarking the system.
 \section{Implementation}
 
 Now that we have an idea of \emph{what} we want to implement we must change our
-mindset into \emph{how} we want to implement it. \todo{somthing more here?} We
-note that due to time limitations the implementation is yet to be properly
-optimized. The data structures were first implemented without any regard for
-memory reclamation. Allocated memory were simply leaked when no longer needed.
+mindset into \emph{how} we want to implement it. We make use of Rust's features
+in order to make the system easy to use and hard to misuse.  As there is often a
+disconnect between the description of a system and its implementation we risk
+repeating parts of Chapter~\ref{ch:memory-reclamation} in this chapter. We note
+that due to time limitations of this project the implementation is yet to be
+properly optimized. The data structures were first implemented without any
+regard for memory reclamation.  Allocated memory were simply leaked when no
+longer needed.
 
 
 \subsection{Atomics\label{sec:atomics}}
@@ -637,8 +704,7 @@ needed. Most notably a \code{HazardPtr} type was created, which handles
 registration and deregistration of the hazard pointer automatically.
 
 
-\subsection{Data Structures}
-\label{sec:data-structures}
+\subsection{Data Structures\label{sec:data-structures}}
 
 For comparing concurrent memory reclamation in a meaningful way we need shared
 memory, organized in some data structure. We have chosen to implement two of the
@@ -779,7 +845,7 @@ effectively meaning they are not aligned at all. Since we know that the pointers
 we have points to larger objects, the LSB of the pointer itself is free. We use
 this to tag the node. A consequence of tagging is that all operations must check
 the \code{next} pointers for tags, and abort their operation if it contains one,
-since the ndoe they are currently on are being removed. This is especially a
+since the node they are currently on are being removed. This is especially a
 problem when using hazard pointers, as the next node is not protected, and may
 have been both removed from the list as well as deallocated.
 
@@ -948,7 +1014,7 @@ epoch.  If we succeed at incrementing the epoch we also free as much garbage as
 allowed from the global garbage list. This scheme is in a sense fair, in that
 threads that pin a lot supposedly create a lot of garbage, and these threads
 will also have to clean up once in a while. It does however suffer from the fact
-that a single thread is set to clean up all the garbage from potentiall all
+that a single thread is set to clean up all the garbage from potential all
 other threads.  This increases the variance of the overhead of EBR, which is
 confirmed experimentally in Chapter~\ref{ch:results}. An idea for an
 alternative implementation could register globally that all threads are to
@@ -997,7 +1063,7 @@ a proof that the pointer is safe to use by the thread. There is no abstraction
 around the validation of the hazard pointers; this has to be done manually, and
 was inlined in all places necessary.
 
-As we saw in Section~\ref{sec:hazard-pointers} we have primarily two ways
+As we saw in Section~\ref{sec:hp} we have primarily two ways
 of handling freeing of data protected by hazard pointers: waiting and deferring.
 We have implemented both, using Rusts \emph{conditional compilation}, in which
 either variant is enabled through a flag passed to the compiler.
@@ -1009,7 +1075,7 @@ rather spun on contention of the hazard pointers for the nodes, as this queue
 would have less contention.  The \code{hazard()} method on the atomic pointer
 types from Section~\ref{sec:atomics} hijacks the program execution for freeing,
 similar to the \code{pin} function in EBR\@. The hazard pointer is buffered
-locally and then pushed into a global list. Occationally we pop the hazard
+locally and then pushed into a global list. Occasionally we pop the hazard
 pointer element of the queue if the pointer is unique. If the pointer is not
 unique, we give up.
 
@@ -1024,9 +1090,9 @@ scheduled threads.
 \section{Testing}
 Testing is an important part of programming, even more so in concurrent
 programming. Edsger Dijkstra famously said ``Testing shows the presence, not the
-absence of bugs''\cite{asd}. In the concurrent world we should be considered
-lucky if our tests even show the presence of the bugs they are intended to
-catch.
+absence of bugs''\cite{buxton1970software}. In the concurrent world we should be
+considered lucky if our tests even show the presence of the bugs they are
+intended to catch.
 
 Our approach to testing is simple. We write regular tests, and run them enough
 times to make it improbable that any scheduling of the threads can cause
@@ -1057,9 +1123,9 @@ use the nightly build of the compiler, as the API is not considered stable.
 
 A downside with Valgrind is the decrease in runtime it imposes. Many hours have
 been used waiting on Valgrind to hopefully reveal the illegal memory access that
-happend earlier. In addition, since Valgrind is effectively a virtual machine,
+happened earlier. In addition, since Valgrind is effectively a virtual machine,
 the scheduling is different from when ran by the OS\@. This often made bugs
-diasppear, and we were forced to run the tests, or benchmarks, tens of times
+disappear, and we were forced to run the tests, or benchmarks, tens of times
 (each of which already taking an unpleasant amount of time) in order to get
 stack traces of the crashing program. While the situation is unfortunate, I do
 not believe that there currently is a good solution at verifying a concurrent
@@ -1068,128 +1134,137 @@ careful implementation which hopefully matches the proof. This however is often
 intractable for larger systems}.
 
 
-\section{Profiling}
-\note{How do we benchmark?}
-\todo{actually find out this!}
+\section{Profiling\label{sec:profiling}}
 
-We compare the performance overhead of HP, EBR, and without any reclamation. We
-look at their performance implication when we operate on the queue and the list,
-as described in Section~\ref{sec:data-structures}. We start out by looking at
-the performance on a single threaded system, in order to get a notion of how how
-much overhead the schemes impose. Then we look at a larger multi threaded system,
-so see how well the schemes handle contention. \note{This sounds like a better
-fit for the Results chapter?}
+In order to better understand the trade-offs between EBR and HP we have written
+benchmarks. We compare the performance overhead of HP and EBR by measuring the
+total time it takes for some large operation to complete, using different number
+of threads. The operations are \code{N} operations on the queue and list, which
+were described in Section~\ref{sec:data-structures}. While the reclamation
+system is designed for multi-threaded applications, it is also interesting to
+look at the overhead when using only one thread since the overhead may be very
+similar, which would be an indication that the scheme scales well.
 
-\note{Maybe we want to compare before and after comparisons after we have
-optimized the code a little? Look at ordering implications?}
+While Rust do support testing, it does not support benchmarking on the stable
+release, although there is a system similar to that of testing available on the
+nightly release. There are also multiple third party benchmark suites, most of
+which are based on the nightly benchmark system. As the implemented memory
+reclamation schemes uses global state and thread local data, we must be careful
+in how the benchmark suite operates, due to the problems noted in
+Section~\ref{sec:thread-cleanup}. In addition, problems arise when benchmarking
+the data structures without any memory reclamation, as the memory is quickly
+exhausted, which either caused the process to crash or the memory to be swapped
+to disk, destroying performance and invalidating the benchmark. Initially a
+workaround was proposed, where the data structure operations saved a pointer to
+the node they were leaking in a passed in memory location, but this was
+difficult to generalize when using multiple threads. Note that this is
+preferable to the caller allocating the node, since that would hide the
+allocation cost in the benchmark (which is rather high). For these reasons, a
+separate benchmark crate was developed.
 
-\todo{fix ``support testing''} While Rust do support testing, it does not
-support benchmarking on the stable release. There exist multiple third party
-benchmark suites, most of which are based on the nightly benchmark system. As
-the implemented memory reclamation schemes uses global state and thread local
-data, we must be careful in how the benchmark suite operates, due to the
-problems noted in Section~\ref{sec:thread-cleanup}.  For these reasons, a
-separate benchmark crate was developed. The system is simple and captures only
-timings of which it reports the average and the variance. These timings were
-used to generate the graphs in Chapter~\ref{ch:results}.
+The benchmark system is made for multi-threaded applications, and handles thread
+spawning and joining internally. Upon setup the user defines the number of
+threads that should be ran, as well as a state struct, which is given to all
+closures. After setup the user passes a \emph{function pointer} to the system
+(note, not a closure). The reason for this design decision is primarily
+ergonomic, as we would like to avoid lifetime issues, but is is then also clear
+to the user that the function passed may not mutate \emph{any} state. The
+function must take as its only parameter a reference to the state struct, as
+defined in the setup. The system runs the function repeatedly. We ran it 200
+times on all platforms. These measurements were used to generate the graphs in
+Chapter~\ref{ch:results} and Appendix~\ref{ch:benchmarks}. See
+Listing~\ref{lst:benchmark} for a code sample of one of the benchmarks.
+
+\begin{figure}[ht]
+  \begin{lstlisting}[label=lst:benchmark,caption=Benchmarking \code{Queue::pop}
+  using the self made benchmarking system with a variable number of threads.
+  The closure passed to \code{.before} is executed before every call to the
+  measured function and is used to initialize the state (in this case
+  prepopulate the queue). The function passed to \code{.thread_bench}
+  (\code{queue_pop}) is the measured function.]
+pub fn queue_pop(num_threads: usize) -> bench::BenchStats {
+    struct State {
+        queue: Queue<u32>,
+    }
+    let state = State { queue: Queue::new() };
+    let mut b = bench::ThreadBencher::<State, hp::JoinHandle<()>>::new(state,
+                                                                       num_threads);
+    b.before(|state| {
+        while let Some(_) = state.queue.pop() {}
+        for i in 0..NUM_ELEMENTS {
+            state.queue.push(i as u32);
+        }
+    });
+    fn queue_pop(state: &State) {
+        while let Some(_) = state.queue.pop() {}
+    }
+    b.thread_bench(queue_pop);
+    b.into_stats(format!("{}::queue::pop::{}", NAME, num_threads))
+}
+  \end{lstlisting}
+\end{figure}
 
 We set up multiple benchmarks, in order to try to find different scenarios in
-which the schemes performs differently. We have \todo{} different benchmarks:
+which the schemes performs differently. We have five different benchmarks:
+
 \begin{description}
   \item[\code{Queue::push}:] We measure the total time it takes to push \code{N}
     elements into a queue.
   \item[\code{Queue::pop}:] We measure the total time it takes to pop \code{N}
     elements out from a queue, which contains \code{N} elements. The threads
     repeatedly calls \code{pop} until \code{None} is returned.
-  \item[\code{Queue::transport}:] We have two queues, one source and one sink. The
-    source is pre-filled with \code{N} elements. The threads moves all elements
-    from the source to the sink.
+  \item[\code{Queue::transport}:] We have two queues, one source and one sink.
+    The source is pre-filled with \code{N} elements, and the sink is empty. The
+    threads moves all elements from the source to the sink.
   \item[\code{List::remove}:] We pre-populate a list with \code{N} numbers in
     random order. Then each thread removes \code{N/t} unique elements, where
     \code{t} is the number of threads running. This ensures that all removals
-    are succeding and that the list is empty at the end.
-  \item[\code{List::real}:] We simulate a real world scenario, in which
-    we perform different operations on the list. Which operation is performed is
-    based on the following distribution: 40\% \code{insert}, 20\% \code{remove},
-    20\% \code{remove\_front}, and 20\% \code{search}. The list is pre populated
-    with some elements, in order for the removals not to fail often early on.
-    The numbers which we insert, remove, or search for are also randomly
-    generated.
+    are succeeding and that the list is empty at the end\footnote{Note that if \code{t}
+    does not divide \code{N} the queue is left with \code{N \% t} elements; this
+    caused confusion when benchmarking systems where the number of threads is
+    not a power of 2.}.
+  \item[\code{List::real}:] We simulate a real world scenario, in which we
+    perform different operations on the list. Which operation is performed is
+    randomly selected and based on the following distribution: 40\%
+    \code{insert}, 20\% \code{remove}, 20\% \code{remove\_front}, and 20\%
+    \code{search}. The list is pre populated with \code{N} elements, in order for
+    the removals not to fail often. The numbers which we insert, remove, or
+    search for are also randomly generated from the range \code{[0, N)}.
 \end{description}
 
-An interesting problem that turned up when benchmarking is the following: how do
-we benchmark the data structures that does not reclaim any memory? The problem
-is that the benchmarking system runs a loop an unspecified number of times, to
-make sure the results are statistically significant\note{this is probably not
-the right word}. This means that we cannot directly control the number of nodes
-we allocate which we do not free, and we risk running out of memory. This causes
-the system to swap memory to disk, which destroys performance.
 
-Fortunately, \code{bencher} does support executing code in between $n$ benchmark
-iterations, where we get to specify $n$. We can use this to preallocate a
-\code{Vec}, in which we put pointers to the memory we allocate in the data
-structure we profile. Then, after the $n$ iterations, we free that memory. This
-requires some \code{unsafe} code, but it is fully supported by the \code{Vec}
-from the standard library. This is a better technique than to allocate the nodes
-up front and pass the \code{Node} to the procedures, as this would hide the
-allocation cost of the procedure. Listing~\ref{lst:bench-nothing} shows a
-benchmark of a Queue using this technique.
-
-\subsection{Single threaded Benchmarks}
-
-\begin{figure}[ht]
-  \begin{lstlisting}[caption=Microbenchmark of a data structure without memory
-  reclamation,label=lst:bench-nothing]
-pub fn push(b: &mut Bencher) {
-    const N: u64 = 1024 * 1024;
-    b.bench_n(N, |b| {
-        let queue = Queue::new();
-        let mut ptrs = Vec::with_capacity(N as usize);
-        let ptr = ptrs.as_mut_ptr();
-        let mut i = 0;
-        b.iter(|| {
-            queue.push(0usize, unsafe { ptr.offset(i) });
-            i += 1;
-        });
-        unsafe {
-            ptrs.set_len(N as usize);
-        }
-    });
-}
-  \end{lstlisting}
-\end{figure}
-
-
-\subsection{Multithreaded Benchmarks}
-
-
-\note{Should add note on microbenchmarks. \code{cargo bench} is alright, but we
-get very varying results, since we amortize cleanup over a many runs. This makes
-the results given not so good.}
-
-
-\chapter{Results}\label{ch:results}
+\chapter{Experimental Results}\label{ch:results}
 
 We have ran the benchmark suite on five different machines, in order to cover
-CPUs from different vendors made for different use cases, hoping to uncover
-differences in the reclamation scheme performance. As the CPUs have a very
+CPU's from different vendors made for different use cases, hoping to uncover
+differences in the reclamation scheme performance. As the CPU's have a very
 different core and thread count, the number of threads in each benchmark is not
-the same across CPUs, but are capped with the number of hardware threads
-supported for the CPU\@. This means that the benchmarks for the lower end CPUs
-only use up to 4 threads, while the ones for the highly parallel ARM CPUs use
-up to 32. The CPUs we have tested on are a Intel\textregistered{} i7--7500U @
-2.70GHz with 2 cores and 4 threads, a Intel\textregistered{} i7--4770 @ 3.40GHz
-with 4 cores and 8 threads, a Intel\textregistered{} Xeon\textregistered{}
-E5--2620 @ 2.0GHz with 6 cores and 12 threads, a Ryzen 7 1700 @ 3.0GHz with 8
-cores and 16 threads, and the ARM based Cavium ThunderX @ 2.5GHz with 32 cores
-and 32 threads.
+the same across CPU's, but are capped with the number of hardware threads
+supported for the CPU\@. This means that the benchmarks for the lower end CPU's
+only use up to 4 threads, while the ones for the highly parallel ARM CPU's use
+up to 32. The CPU's we have tested on are shown in Table~\ref{tb:cpus}. All CPU's
+are single socket.
 
-The benchmakrs are grouped by CPU, each of which have their own section.  Within
+\begin{figure}[b]
+  \centering
+  \caption{The CPU's on which we performed the benchmarks.\label{tb:cpus}}
+  \begin{tabular}{c c c c c c}
+    Vendor & CPU Name & Architecture & Clock Frequency & Cores & Hardware threads \\
+    \hline
+    Intel  & i7--7500U  & \code{x86}   & 2.70GHz & 2  &  4\\
+    Intel  & i7--4770   & \code{x86}   & 3.40GHz & 4  &  8\\
+    Intel  & E5--2620   & \code{x86}   & 2.00GHz & 6  & 12\\
+    AMD    & Ryzen 1700 & \code{x86}   & 3.00GHz & 8  & 16\\
+    Cavium & ThunderX   & \code{ARMv8} & 2.50GHz & 32 & 32
+  \end{tabular}
+\end{figure}
+
+The results are grouped by CPU, each of which have their own section.  Within
 each section each benchmark have a single bar graph, showing the ratio of the
 time used to the time used without any memory reclamation on a logarithmic
 scale. The x-axis shows the thread count. Note that the \code{queue::push}
-benchmark is not present in this chapter. For a more complete dataset, see
-Appendix\ \ref{ch:benchmarks}.
+benchmark is not present in this chapter. For the full data set, see Appendix\
+\ref{ch:benchmarks}, which shows box plots for all performed benchmarks.
 
 We note that one of the schemes we compare, Crossbeam, is a well developed open
 source library, while the remaining, namely EBR, HP, and HP-Spin, are the
@@ -1200,37 +1275,11 @@ implementations differ between Crossbeam and the author's, which causes
 performance differences not strictly due to the presence of the memory
 reclamation system.
 
-
-
-\clearpage
-
-
-
-\begin{figure}[ht]
-  \centering
-  \foreach \kind in {laptop,gribb,server,ryzen,scaleway} {
-    \begin{subfigure}{0.24\textwidth}
-      \centering \footnotesize\code{Queue::Pop}
-      \includegraphics[width=\textwidth]{plots/\kind-b:queue_pop.pdf}
-    \end{subfigure}
-    \begin{subfigure}{0.24\textwidth}
-      \centering \footnotesize\code{Queue::Transfer}
-      \includegraphics[width=\textwidth]{plots/\kind-b:queue_transfer.pdf}
-    \end{subfigure}
-    \begin{subfigure}{0.24\textwidth}
-      \centering \footnotesize\code{List::Remove}
-      \includegraphics[width=\textwidth]{plots/\kind-b:list_remove.pdf}
-    \end{subfigure}
-    \begin{subfigure}{0.24\textwidth}
-      \centering \footnotesize\code{List::Real}
-      \includegraphics[width=\textwidth]{plots/\kind-b:list_real.pdf}
-    \end{subfigure}
-    \\
-  }
-\end{figure}
-
-\clearpage
-
+The 7500U and the Ryzen are the authors personal machines. The 4770 was borrowed
+from the department of computer science at NTNU\@. The 2620 was borrowed from
+Webkom, the web-committee for Abakus, the student association for computer
+science and communications technology at NTNU\@. The ThunderX was rented at
+Scaleway\cite{scaleway}.
 
 \newcommand{\benches}[2]{
   \begin{figure}[ht]
@@ -1275,7 +1324,7 @@ This is expected, as HP has to register hazard pointers for each node when we
 traverse the list, which is done in both \code{Remove} and \code{Real}. The
 difference is somewhat less in \code{Real} using four cores, probably due to the
 increased contention, but there is still a factor of 10 in difference. HP and
-HP-Spin performs very similar here, as we see the oposite effect from in the
+HP-Spin performs very similar here, as we see the opposite effect from in the
 queue benchmarks, where the overhead of the queue push drowns in the slow
 operations.
 
@@ -1285,8 +1334,11 @@ operations.
 \section{Intel\textregistered{} i7--4770}
 
 The i7--4770 shows almost identical numbers as the 7500U. This is expected, as
-both CPUs are x86 from Intel, and targets much of the same segment. As with the
-7500U we see almost no difference in overhead as the thread count increases.
+both CPU's are x86 from Intel, and targets much of the same segment. As with the
+7500U we see almost no difference in overhead as the thread count increases,
+with the exception of \code{Queue::Pop} which do increase, and has the highest
+overhead of that benchmark across all tested CPU's, especially using
+Crossbeam.
 
 \benches{gribb}{Intel\textregistered{} i7--4770}
 
@@ -1296,17 +1348,29 @@ both CPUs are x86 from Intel, and targets much of the same segment. As with the
 The E5-2620 is a CPU targeting the server segment. It is the oldest CPU in the
 report, being released in Q1'2012. \code{Pop} shows us similar overhead as in
 the previous Intel CPU's. \code{Transfer} however, shows an increased overhead
-with the lower thread configurations, which reaces well past a factor of 10 with
-one thread, but gradually decreases to 8, with 12 threads.
+with the lower thread configurations, which reaches well past a factor of 10 with
+one thread, but gradually decreases to 8, with 12 threads. That the overhead is
+reduced with the increase in core count is also unique for the Xeon among the
+Intel CPU's. It is surprising that only \code{transfer} and not \code{pop} have
+this decrease, although it may be explained by the fact that \code{transfer}
+allocates nodes, such that the ratio is smaller since the total time is larger.
 
 Both \code{List} benchmarks also shows a slightly different performance profile,
 where the overhead overall is lower than both the 7500U and the 4770.
-
 
 \benches{server}{Intel\textregistered{} Xeon\textregistered{} E5--2620}
 
 \clearpage
 \section{Ryzen 7 1700}
+
+The Ryzen is the tests only CPU from AMD, and has the second highest core count,
+despite being a desktop CPU. One might expect AMD's focus on multi-core to
+be manifested in the benchmark in the form of lower synchronization costs.
+Despite this, the difference between EBR based schemes and HP based schemes for
+\code{Pop}is the largest in the test. This is counter intuitive, as HP schemes
+have a higher degree of synchronization. The results for the \code{List} tests
+are similar to the 2620, with a little higher overhead with lower thread counts.
+
 \benches{ryzen}{Ryzen 7 1700}
 
 \clearpage
@@ -1315,32 +1379,85 @@ where the overhead overall is lower than both the 7500U and the 4770.
 The Cavium ThunderX is the only ARM based CPU in the report. It is also the CPU
 that produced the most surprising results. We see that certain benchmarks and
 thread counts beat the baseline of no reclamation with all schemes except
-\code{HP}. \todo{run again and comment if it is reproducible.}
-
-It is worth nothing that memory reclamation previously have been shown to
-increase performance in the literature, such as\ \cite{brown2015reclaiming}.
-This may be due to the reduced memory footprint which reduces the number of
-cache misses.
+\code{HP}. It is worth nothing that memory reclamation previously have been
+shown to increase performance in the literature, such as\
+\cite{brown2015reclaiming}. This may be due to the reduced memory footprint
+which reduces the number of cache misses. We also see that the ThunderX scales
+very on the \code{List} benchmarks, improving by a factor of 10 from 1 to 32
+threads in \code{List::Remove}.
 
 \benches{scaleway}{Cavium ThunderX}
 
 
-\chapter{Discussion\label{ch:discussion}}
-\note{Whys. How was Rust? Why are the graphs as they are?
-What alternatives exists?}
+\chapter{Conclusion\label{ch:conclusion}}
+
+In this report we have looked at the problem of concurrent memory reclamation, a
+field which importance increases as the core count of consumer hardware is
+increasing. We have looked at two of the most popular schemes, Epoch Based
+Reclamation (Section~\ref{sec:ebr}) and Hazard Pointers (Section~\ref{sec:hp}),
+and implementations of them in the Rust programming language
+(Chapter~\ref{ch:methodology}). We have also looked at the performance
+implications of the two across multiple CPU's.  Neither implementation has
+undergone careful optimizations, so the absolute performance numbers are not as
+interesting as the general curves of the schemes, although the implementation of
+EBR had similar overhead characteristics as Crossbeam in most benchmarks.
+
+We used Rust as the implementation language. Rust has concurrency as one of its
+main goals, and has shown to be a great language for constructing high level
+abstractions as well as maintaining low level control. Rusts tooling has also
+proved itself to be mature enough, even though we had to jump through some hoops
+(like replacing the default allocator with the system allocator). I think Rust
+shows great promise for systems programming, especially within the realm of
+concurrency.
+
+
+\section{Future Work}
+
+This report is mainly a proof of research by the Author, and it thus does not
+necessarily contain noteworthy novel parts. However, it does shed some light on
+an increasingly popular and important field. I list topic I believe are natural
+extensions of this project, or related projects.
+
+This report only discusses implementation of two data structures, the list and
+the queue. Other relevant structures to test against includes Skip-Lists,
+Hash Maps, and Deques. It might also be interesting to look at the performance
+implication of the reclamation schemes when using other primitives such as
+channels.
+
+Implementing other reclamation schemes in Rust could be interesting, as the
+schemes can leverage the static checking that Rust does to a varying degree.  It
+would be worth looking into implementations of any of the systems mentioned in
+Section~\ref{sec:other-schemes} (or any of the many systems not mentioned), as
+well as improvements of the implementations of EBR and HP, which already exists.
+Performance, usability, and security are three important factors here.
+
+As mentioned in Section~\ref{sec:related-work}, both Crossbeam and the C++
+community is looking into generic and flexible implementations of hazard
+pointers. This required careful engineering and planning, and could be a
+valuable addition to both ecosystems.
+
+With the emergence of support for hardware transactional memory it would be
+especially interesting to have Rust implementations of reclamation schemes using
+HTM\@. This would require either the Rust compiler to have support for HTM, or
+third party crates to have inline assembly for the targets that support HTM\@.
+
+Lastly, from an engineering standpoint, improved tooling for concurrent
+programming would be much appreciated by the entire community. While Rusts
+static checks and rules narrow the searches for bugs in the codebase down to
+\code{unsafe} blocks, there still seems to be no good way of neither detecting
+nor finding bugs that are due to concurrency.
 
 
 \bibliographystyle{acm}
 \addcontentsline{toc}{chapter}{Bibliography}
 \bibliography{sources}
 
-\begin{appendices}
-  \chapter{Rust's Toolchain}
-  The Rust toolchain consists of multiple tools. There is the compiler
-  \rustc{}, the build tool and dependency manager \cargo{}, and the toolchain
-  manager \rustup.  \rustup{} is the preferred way of installing
-  Rust\todo{source rustup.rs}.  \rustup{} also handles cross-compiling, i.e.\
-  compiling programs for a different architecture.
+\begin{appendices} \chapter{Rust's Toolchain\label{ch:rust-toolchain}} The Rust
+  toolchain consists of multiple tools. There is the compiler \rustc{}, the
+  build tool and dependency manager \cargo{}, and the toolchain manager
+  \rustup~\cite{rustup}. \rustup{} is the preferred way of installing Rust.
+  \rustup{} also handles cross-compiling, i.e.\ compiling programs for a
+  different architecture.
 
   A major part of Rust's ecosystem is \url{https://crates.io}, the package repository
   for Rust. This is where packages handled by \cargo{} is downloaded from, by default.
@@ -1444,7 +1561,8 @@ test ebr::queue::test::is_unique_receiver ... ok
     \end{lstlisting}
   \end{figure}
 
-  \todo{Replace this with using \code{bencher}.}
+  We note that for this project a own benchmarking system was developed
+  (Section~\ref{sec:profiling}), but we still show the official benchmark system here.
   Benchmarking is similar, except that we do not have a conditional compilation
   flag for benchmarks. For similarity, we can put benchmarks in the \code{bench}
   module. Benchmarks are annotated with \code{\#[bench]}. The benchmarks are ran
@@ -1558,7 +1676,17 @@ linker = "aarch64-linux-gnu-gcc"
     \end{subfigure}}
 }
 
-\todo{Write something about these benchmarks, and what might be interesting to look at here.}
+All measured timings for all CPU's we have ran the benchmarks on are listed in
+this chapter. The timings are plotted in box plots, so that outliers are easy to
+spot. This is especially relevant for our use case, since some of the
+reclamation schemes only reclaim memory occasionally.  Note that the range on
+the y axis varies. The box plots are organized in 5x5 grids, where each column
+is a reclamation scheme and each row is a benchmark. Thus, we read left-to-right
+to compare the different schemes.
+
+We note again that Crossbeam does not offer a List implementation, and is such
+excluded from the benchmarks that is using a List.
+
 
 \clearpage
 \section{Intel\textregistered{} i7--7500U}
